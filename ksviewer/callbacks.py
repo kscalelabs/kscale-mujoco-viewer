@@ -37,7 +37,7 @@ class Callbacks:
         self._advance_by_one_step = False
         self._hide_menus = hide_menus
 
-    def _key_callback(self, window: glfw.Window, key: int, scancode: int, action: int, mods: int) -> None:
+    def _key_callback(self, window, key: int, scancode: int, action: int, mods: int) -> None:
         if action != glfw.RELEASE:
             if key == glfw.KEY_LEFT_ALT:
                 self._hide_menus = False
@@ -152,7 +152,7 @@ class Callbacks:
             glfw.set_window_should_close(self.window, True)
         return
 
-    def _cursor_pos_callback(self, window: glfw.Window, xpos: float, ypos: float) -> None:
+    def _cursor_pos_callback(self, window, xpos: float, ypos: float) -> None:
         if not (self._button_left_pressed or self._button_right_pressed):
             return
 
@@ -180,7 +180,7 @@ class Callbacks:
         self._last_mouse_x = int(self._scale * xpos)
         self._last_mouse_y = int(self._scale * ypos)
 
-    def _mouse_button_callback(self, window: glfw.Window, button: int, act: int, mods: int) -> None:
+    def _mouse_button_callback(self, window, button: int, act: int, mods: int) -> None:
         self._button_left_pressed = button == glfw.MOUSE_BUTTON_LEFT and act == glfw.PRESS
         self._button_right_pressed = button == glfw.MOUSE_BUTTON_RIGHT and act == glfw.PRESS
 
@@ -279,6 +279,6 @@ class Callbacks:
         if act == glfw.RELEASE:
             self.pert.active = 0
 
-    def _scroll_callback(self, window: glfw.Window, x_offset: float, y_offset: float) -> None:
+    def _scroll_callback(self, window, x_offset: float, y_offset: float) -> None:
         with self._gui_lock:
             mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_ZOOM, 0, -0.05 * y_offset, self.scn, self.cam)

@@ -752,7 +752,7 @@ class MujocoViewer(Callbacks):
 
     # --------- Key Callback Method --------- #
 
-    def _key_callback(self, window: glfw.Window, key: int, scancode: int, action: int, mods: int) -> None:
+    def _key_callback(self, window, key: int, scancode: int, action: int, mods: int) -> None:
         """Handle key press events.
 
         :param window: The window that received the event.
@@ -788,7 +788,7 @@ class MujocoViewer(Callbacks):
 
     # --------- Mouse Callback Methods --------- #
 
-    def _cursor_pos_callback(self, window: glfw.Window, xpos: float, ypos: float) -> None:
+    def _cursor_pos_callback(self, window, xpos: float, ypos: float) -> None:
         """Handle cursor position events.
 
         :param window: The window that received the event.
@@ -798,7 +798,7 @@ class MujocoViewer(Callbacks):
         # Pass the event to the base class or handle it here
         super()._cursor_pos_callback(window, xpos, ypos)
 
-    def _mouse_button_callback(self, window: glfw.Window, button: int, action: int, mods: int) -> None:
+    def _mouse_button_callback(self, window, button: int, action: int, mods: int) -> None:
         """Handle mouse button events.
 
         :param window: The window that received the event.
@@ -809,7 +809,7 @@ class MujocoViewer(Callbacks):
         # Pass the event to the base class or handle it here
         super()._mouse_button_callback(window, button, action, mods)
 
-    def _scroll_callback(self, window: glfw.Window, xoffset: float, yoffset: float) -> None:
+    def _scroll_callback(self, window, xoffset: float, yoffset: float) -> None:
         """Handle scroll events.
 
         :param window: The window that received the event.
@@ -819,7 +819,7 @@ class MujocoViewer(Callbacks):
         # Pass the event to the base class or handle it here
         super()._scroll_callback(window, xoffset, yoffset)
 
-    def _window_size_callback(self, window: glfw.Window, width: int, height: int) -> None:
+    def _window_size_callback(self, window, width: int, height: int) -> None:
         """Handle window resize events.
 
         :param window: The window that was resized.
