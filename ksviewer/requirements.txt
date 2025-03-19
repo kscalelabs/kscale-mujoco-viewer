@@ -1,0 +1,5 @@
+# requirements.txt
+
+mujoco
+glfw
+imageio
