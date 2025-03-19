@@ -29,7 +29,7 @@ setup(
     version=version,
     description="The kscale-mujoco-viewer project",
     author="Wesley Maa",
-    url="https///github.com/kscalelabs/kscale-mujoco-viewer",
+    url="https://github.com/kscalelabs/kscale-mujoco-viewer",
     long_description=long_description,
     long_description_content_type="text/markdown",
     python_requires=">=3.11",
