@@ -1,6 +1,8 @@
 # kscale-mujoco-viewer
 
-Welcome to the kscale-mujoco-viewer project!
+Mujoco viewer maintained by K-Scale Labs.
+
+Originally referenced from [mujoco-python-viewer](https://github.com/gaolongsen/mujoco-python-viewer).
 
 ## Installation
 
