@@ -9,22 +9,23 @@ import yaml
 
 from .callbacks import Callbacks  # Ensure this is correctly imported
 
-MUJOCO_VERSION = tuple(map(int, mujoco.__version__.split('.')))
+MUJOCO_VERSION = tuple(map(int, mujoco.__version__.split(".")))
 
 
 class MujocoViewer(Callbacks):
     def __init__(
-            self,
-            model,
-            data,
-            panel_num,
-            mode='window',
-            title="mujoco-python-viewer",
-            width=None,
-            height=None,
-            window_start_x_pixel_offset=6,
-            window_start_y_pixel_offset=30,
-            hide_menus=False):
+        self,
+        model: mujoco.MjModel,
+        data: mujoco.MjData,
+        panel_num: int,
+        mode: str = "window",
+        title: str = "mujoco-python-viewer",
+        width: int | None = None,
+        height: int | None = None,
+        window_start_x_pixel_offset: int = 6,
+        window_start_y_pixel_offset: int = 30,
+        hide_menus: bool = False,
+    ) -> None:
         super().__init__(hide_menus)
         if hide_menus:
             self._hide_graph = True
@@ -32,9 +33,8 @@ class MujocoViewer(Callbacks):
         self.model = model
         self.data = data
         self.render_mode = mode
-        if self.render_mode not in ['offscreen', 'window']:
-            raise NotImplementedError(
-                "Invalid mode. Only 'offscreen' and 'window' are supported.")
+        if self.render_mode not in ["offscreen", "window"]:
+            raise NotImplementedError("Invalid mode. Only 'offscreen' and 'window' are supported.")
 
         # Initialize control flags with default values
         self._run_speed = 1.0
@@ -53,7 +53,7 @@ class MujocoViewer(Callbacks):
         self._wire_frame = False
         self._convex_hull_rendering = False
         self._hide_menus = hide_menus
-        self._hide_graph = getattr(self, '_hide_graph', False)
+        self._hide_graph = getattr(self, "_hide_graph", False)
         self._time_per_render = 1.0
         self._loop_count = 0
 
@@ -73,40 +73,33 @@ class MujocoViewer(Callbacks):
             _, height = glfw.get_video_mode(glfw.get_primary_monitor()).size
 
         # Create GLFW window (initially hidden if offscreen)
-        if self.render_mode == 'offscreen':
+        if self.render_mode == "offscreen":
             glfw.window_hint(glfw.VISIBLE, 0)
-        self.window = glfw.create_window(
-            width, height, title, None, None)
+        self.window = glfw.create_window(width, height, title, None, None)
         if not self.window:
             glfw.terminate()
             raise RuntimeError("Failed to create GLFW window.")
         glfw.make_context_current(self.window)
-        glfw.set_window_pos(self.window,
-                            window_start_x_pixel_offset,
-                            window_start_y_pixel_offset)
+        glfw.set_window_pos(self.window, window_start_x_pixel_offset, window_start_y_pixel_offset)
 
         # Show window if in 'window' mode
-        if self.render_mode == 'window':
+        if self.render_mode == "window":
             glfw.show_window(self.window)
         glfw.swap_interval(1)
 
-        framebuffer_width, framebuffer_height = glfw.get_framebuffer_size(
-            self.window)
+        framebuffer_width, framebuffer_height = glfw.get_framebuffer_size(self.window)
 
         # Install callbacks only for 'window' mode
-        if self.render_mode == 'window':
+        if self.render_mode == "window":
             window_width, _ = glfw.get_window_size(self.window)
             self._scale = framebuffer_width / window_width
 
             # Override the key callback to handle space key for pausing
-            glfw.set_key_callback(
-                self.window, self._key_callback)
+            glfw.set_key_callback(self.window, self._key_callback)
 
             # Set mouse-related callbacks
-            glfw.set_cursor_pos_callback(
-                self.window, self._cursor_pos_callback)
-            glfw.set_mouse_button_callback(
-                self.window, self._mouse_button_callback)
+            glfw.set_cursor_pos_callback(self.window, self._cursor_pos_callback)
+            glfw.set_mouse_button_callback(self.window, self._mouse_button_callback)
             glfw.set_scroll_callback(self.window, self._scroll_callback)
             glfw.set_window_size_callback(self.window, self._window_size_callback)
 
@@ -143,8 +136,7 @@ class MujocoViewer(Callbacks):
                 self.fig_center.linedata[n][2 * i] = float(-i)
 
         # Create MuJoCo rendering context
-        self.ctx = mujoco.MjrContext(
-            self.model, mujoco.mjtFontScale.mjFONTSCALE_150.value)
+        self.ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_150.value)
 
         # Define viewports for both graphs
         width, height = framebuffer_width, framebuffer_height
@@ -171,16 +163,14 @@ class MujocoViewer(Callbacks):
         self.axis_autorange(fig_idx=1)
 
         # Load camera configuration (if available)
-        pathlib.Path(self.CONFIG_PATH.parent).mkdir(
-            parents=True, exist_ok=True)
+        pathlib.Path(self.CONFIG_PATH.parent).mkdir(parents=True, exist_ok=True)
         pathlib.Path(self.CONFIG_PATH).touch(exist_ok=True)
         with open(self.CONFIG_PATH, "r") as f:
             try:
                 load_config = yaml.safe_load(f)
                 if isinstance(load_config, dict):
                     for key, val in load_config.items():
-                        if key in ["type", "fixedcamid", "trackbodyid", "lookat",
-                                   "distance", "azimuth", "elevation"]:
+                        if key in ["type", "fixedcamid", "trackbodyid", "lookat", "distance", "azimuth", "elevation"]:
                             setattr(self.cam, key, val)
                 # Validate camera settings
                 if self.cam.type == mujoco.mjtCamera.mjCAMERA_FIXED:
@@ -193,8 +183,7 @@ class MujocoViewer(Callbacks):
                 print(f"Error loading camera config: {e}")
 
         # Get main viewport
-        self.viewport = mujoco.MjrRect(
-            left=0, bottom=0, width=framebuffer_width, height=framebuffer_height)
+        self.viewport = mujoco.MjrRect(left=0, bottom=0, width=framebuffer_width, height=framebuffer_height)
 
         # Overlay and markers
         self._overlay = {}
@@ -205,9 +194,10 @@ class MujocoViewer(Callbacks):
 
     # --------- Plot Management Methods --------- #
 
-    def set_grid_divisions(self, x_div: int, y_div: int, x_axis_time: float = 0.0, fig_idx=0, override=False):
-        """
-        Set grid divisions for a specified graph panel.
+    def set_grid_divisions(
+        self, x_div: int, y_div: int, x_axis_time: float = 0.0, fig_idx: int = 0, override: bool = False
+    ) -> None:
+        """Set grid divisions for a specified graph panel.
 
         :param x_div: Number of divisions along the x-axis.
         :param y_div: Number of divisions along the y-axis.
@@ -217,8 +207,7 @@ class MujocoViewer(Callbacks):
         """
         if not override:
             assert x_axis_time >= self.model.opt.timestep * 50, (
-                "Set [x_axis_time] >= [self.model.opt.timestep * 50] "
-                "to ensure a suitable sampling rate."
+                "Set [x_axis_time] >= [self.model.opt.timestep * 50] to ensure a suitable sampling rate."
             )
         if fig_idx == 0:
             fig = self.fig_bottom
@@ -240,19 +229,15 @@ class MujocoViewer(Callbacks):
                     f"Maximum x_axis_time is: {new_x_axis_time} seconds. "
                     "Consider reducing x_axis_time or increasing timestep."
                 )
-            assert 1 <= self._num_pnts <= 1000, (
-                "num_pnts should be between 1 and 1000, "
-                f"currently: {self._num_pnts}"
-            )
+            assert 1 <= self._num_pnts <= 1000, f"num_pnts should be between 1 and 1000, currently: {self._num_pnts}"
             self._time_per_div = (self.model.opt.timestep * self._num_pnts) / x_div
             self.set_x_label(
                 xname=f"time/div: {self._time_per_div:.2f}s, total: {self.model.opt.timestep * self._num_pnts:.2f}s",
-                fig_idx=fig_idx
+                fig_idx=fig_idx,
             )
 
-    def axis_autorange(self, fig_idx=0):
-        """
-        Enable autorange for a specified graph panel.
+    def axis_autorange(self, fig_idx: int = 0) -> None:
+        """Enable autorange for a specified graph panel.
 
         :param fig_idx: Index of the figure (0 for bottom-right, 1 for center-right).
         """
@@ -268,9 +253,8 @@ class MujocoViewer(Callbacks):
         fig.range[1][0] = 1.0
         fig.range[1][1] = -1.0
 
-    def set_graph_name(self, name: str, fig_idx=0):
-        """
-        Set the title of a specified graph panel.
+    def set_graph_name(self, name: str, fig_idx: int = 0) -> None:
+        """Set the title of a specified graph panel.
 
         :param name: Title of the graph.
         :param fig_idx: Index of the figure (0 for bottom-right, 1 for center-right).
@@ -283,9 +267,8 @@ class MujocoViewer(Callbacks):
         else:
             raise IndexError("fig_idx must be 0 (bottom-right) or 1 (center-right).")
 
-    def show_graph_legend(self, show_legend: bool = True, fig_idx=0):
-        """
-        Show or hide the legend of a specified graph panel.
+    def show_graph_legend(self, show_legend: bool = True, fig_idx: int = 0) -> None:
+        """Show or hide the legend of a specified graph panel.
 
         :param show_legend: Boolean to show or hide the legend.
         :param fig_idx: Index of the figure (0 for bottom-right, 1 for center-right).
@@ -293,11 +276,11 @@ class MujocoViewer(Callbacks):
         if show_legend:
             if fig_idx == 0:
                 for i, name in enumerate(self._data_graph_line_names_bottom):
-                    self.fig_bottom.linename[i] = name.encode('utf8')
+                    self.fig_bottom.linename[i] = name.encode("utf8")
                 self.fig_bottom.flg_legend = True
             if fig_idx == 1:
                 for i, name in enumerate(self._data_graph_line_names_center):
-                    self.fig_center.linename[i] = name.encode('utf8')
+                    self.fig_center.linename[i] = name.encode("utf8")
                 self.fig_center.flg_legend = True
             if fig_idx != 0 and fig_idx != 1:
                 raise IndexError("fig_idx must be 0 (bottom-right) or 1 (center-right).")
@@ -309,9 +292,8 @@ class MujocoViewer(Callbacks):
             if fig_idx != 0 and fig_idx != 1:
                 raise IndexError("fig_idx must be 0 (bottom-right) or 1 (center-right).")
 
-    def set_x_label(self, xname: str, fig_idx=0):
-        """
-        Set the x-axis label of a specified graph panel.
+    def set_x_label(self, xname: str, fig_idx: int = 0) -> None:
+        """Set the x-axis label of a specified graph panel.
 
         :param xname: Label for the x-axis.
         :param fig_idx: Index of the figure (0 for bottom-right, 1 for center-right).
@@ -324,9 +306,8 @@ class MujocoViewer(Callbacks):
         else:
             raise IndexError("fig_idx must be 0 (bottom-right) or 1 (center-right).")
 
-    def add_graph_line(self, line_name, line_data=0.0, fig_idx=0):
-        """
-        Add a new line to a specified graph panel.
+    def add_graph_line(self, line_name: str, line_data: float = 0.0, fig_idx: int = 0) -> None:
+        """Add a new line to a specified graph panel.
 
         :param line_name: Name of the line.
         :param line_data: Initial data value for the line.
@@ -354,9 +335,8 @@ class MujocoViewer(Callbacks):
         else:
             raise IndexError("fig_idx must be 0 (bottom-right) or 1 (center-right).")
 
-    def update_graph_line(self, line_name, line_data, fig_idx=0):
-        """
-        Update the data of an existing line in a specified graph panel.
+    def update_graph_line(self, line_name: str, line_data: float, fig_idx: int = 0) -> None:
+        """Update the data of an existing line in a specified graph panel.
 
         :param line_name: Name of the line to update.
         :param line_data: New data value for the line.
@@ -367,31 +347,23 @@ class MujocoViewer(Callbacks):
                 idx = self._data_graph_line_names_bottom.index(line_name)
                 self._line_datas_bottom[idx] = line_data
             else:
-                raise NameError(
-                    f"Line '{line_name}' not found in bottom-right graph. Add it before updating."
-                )
+                raise NameError(f"Line '{line_name}' not found in bottom-right graph. Add it before updating.")
         elif fig_idx == 1:
             if line_name in self._data_graph_line_names_center:
                 idx = self._data_graph_line_names_center.index(line_name)
                 self._line_datas_center[idx] = line_data
             else:
-                raise NameError(
-                    f"Line '{line_name}' not found in center-right graph. Add it before updating."
-                )
+                raise NameError(f"Line '{line_name}' not found in center-right graph. Add it before updating.")
         else:
             raise IndexError("fig_idx must be 0 (bottom-right) or 1 (center-right).")
 
-    def sensorupdate(self):
-        """
-        Update sensor data for both plotting panels.
-        """
+    def sensorupdate(self) -> None:
+        """Update sensor data for both plotting panels."""
         self.sensorupdate_bottom()
         self.sensorupdate_center()
 
-    def sensorupdate_bottom(self):
-        """
-        Update sensor data for the bottom-right graph panel.
-        """
+    def sensorupdate_bottom(self) -> None:
+        """Update sensor data for the bottom-right graph panel."""
         if self._paused:
             return  # Do not update data when paused
 
@@ -403,10 +375,8 @@ class MujocoViewer(Callbacks):
             self.fig_bottom.linepnt[n] = pnt
             self.fig_bottom.linedata[n][1] = self._line_datas_bottom[n]
 
-    def sensorupdate_center(self):
-        """
-        Update sensor data for the center-right graph panel.
-        """
+    def sensorupdate_center(self) -> None:
+        """Update sensor data for the center-right graph panel."""
         if self._paused:
             return  # Do not update data when paused
 
@@ -418,9 +388,8 @@ class MujocoViewer(Callbacks):
             self.fig_center.linepnt[n] = pnt
             self.fig_center.linedata[n][1] = self._line_datas_center[n]
 
-    def update_graph_size(self, fig_idx=0):
-        """
-        Adjust the viewport size and position for a specified graph panel.
+    def update_graph_size(self, fig_idx: int = 0) -> None:
+        """Adjust the viewport size and position for a specified graph panel.
 
         :param fig_idx: Index of the figure (0 for bottom-right, 1 for center-right).
         """
@@ -431,10 +400,8 @@ class MujocoViewer(Callbacks):
         else:
             raise IndexError("fig_idx must be 0 (bottom-right) or 1 (center-right).")
 
-    def update_graph_size_bottom(self):
-        """
-        Adjust the viewport size and position for the bottom-right graph panel.
-        """
+    def update_graph_size_bottom(self) -> None:
+        """Adjust the viewport size and position for the bottom-right graph panel."""
         width, height = glfw.get_framebuffer_size(self.window)
         width_adjustment = width % 4
         self.graph_viewport_bottom.left = int(3 * width / 4) + width_adjustment
@@ -442,10 +409,8 @@ class MujocoViewer(Callbacks):
         self.graph_viewport_bottom.width = int(width / 4)
         self.graph_viewport_bottom.height = int(height / 4)
 
-    def update_graph_size_center(self):
-        """
-        Adjust the viewport size and position for the center-right graph panel.
-        """
+    def update_graph_size_center(self) -> None:
+        """Adjust the viewport size and position for the center-right graph panel."""
         width, height = glfw.get_framebuffer_size(self.window)
         width_adjustment = width % 4
         self.graph_viewport_center.left = int(3 * width / 4) + width_adjustment
@@ -456,15 +421,14 @@ class MujocoViewer(Callbacks):
     # --------- Marker and Overlay Methods --------- #
 
     def show_actuator_forces(
-            self,
-            f_render_list,
-            rgba_list=[1, 0, 1, 1],
-            force_scale=0.05,
-            arrow_radius=0.03,
-            show_force_labels=False,
+        self,
+        f_render_list: list[list[str]],
+        rgba_list: list[float] = [1, 0, 1, 1],
+        force_scale: float = 0.05,
+        arrow_radius: float = 0.03,
+        show_force_labels: bool = False,
     ) -> None:
-        """
-        Display actuator forces as arrows in the simulation view.
+        """Display actuator forces as arrows in the simulation view.
 
         :param f_render_list: List of lists containing joint name, actuator name, and label.
                               Example:
@@ -490,10 +454,7 @@ class MujocoViewer(Callbacks):
                 label_str = f"{label}: {force_value:.2f}"
             self.add_marker(
                 pos=self.data.joint(jnt_name).xanchor,
-                mat=self.rotation_matrix_from_vectors(
-                    vec1=[0.0, 0.0, 1.0],
-                    vec2=self.data.joint(jnt_name).xaxis
-                ),
+                mat=self.rotation_matrix_from_vectors(vec1=[0.0, 0.0, 1.0], vec2=self.data.joint(jnt_name).xaxis),
                 size=[
                     arrow_radius,
                     arrow_radius,
@@ -501,29 +462,25 @@ class MujocoViewer(Callbacks):
                 ],
                 rgba=rgba_list,
                 type=mujoco.mjtGeom.mjGEOM_ARROW,
-                label=label_str.encode('utf8') if label_str else b""
+                label=label_str.encode("utf8") if label_str else b"",
             )
 
-    def add_marker(self, **marker_params):
-        """
-        Add a marker with specified parameters to be rendered in the scene.
+    def add_marker(self, **marker_params: dict) -> None:
+        """Add a marker with specified parameters to be rendered in the scene.
 
         :param marker_params: Keyword arguments defining marker properties.
         """
-        if 'label' in marker_params and isinstance(marker_params['label'], str):
-            marker_params['label'] = marker_params['label'].encode('utf8')
+        if "label" in marker_params and isinstance(marker_params["label"], str):
+            marker_params["label"] = marker_params["label"].encode("utf8")
         self._markers.append(marker_params)
 
-    def _add_marker_to_scene(self, marker):
-        """
-        Internal method to add a marker to the MuJoCo scene.
+    def _add_marker_to_scene(self, marker: dict) -> None:
+        """Internal method to add a marker to the MuJoCo scene.
 
         :param marker: Dictionary containing marker properties.
         """
         if self.scn.ngeom >= self.scn.maxgeom:
-            raise RuntimeError(
-                f'Ran out of geoms. maxgeom: {self.scn.maxgeom}'
-            )
+            raise RuntimeError(f"Ran out of geoms. maxgeom: {self.scn.maxgeom}")
 
         g = self.scn.geoms[self.scn.ngeom]
         # Default values
@@ -553,99 +510,54 @@ class MujocoViewer(Callbacks):
             elif isinstance(value, bytes):
                 setattr(g, key, value)
             else:
-                raise ValueError(
-                    f"Invalid type for attribute '{key}': {type(value)}"
-                )
+                raise ValueError(f"Invalid type for attribute '{key}': {type(value)}")
 
         self.scn.ngeom += 1
 
     # --------- Overlay Methods --------- #
 
-    def _create_overlay(self):
-        """
-        Create overlay text for the simulation view.
-        """
+    def _create_overlay(self) -> None:
+        """Create overlay text for the simulation view."""
         topleft = mujoco.mjtGridPos.mjGRID_TOPLEFT
         topright = mujoco.mjtGridPos.mjGRID_TOPRIGHT
         bottomleft = mujoco.mjtGridPos.mjGRID_BOTTOMLEFT
         bottomright = mujoco.mjtGridPos.mjGRID_BOTTOMRIGHT
 
-        def add_overlay(gridpos, text1, text2):
+        def add_overlay(gridpos: mujoco.mjtGridPos, text1: str, text2: str) -> None:
             if gridpos not in self._overlay:
                 self._overlay[gridpos] = ["", ""]
             self._overlay[gridpos][0] += text1 + "\n"
             self._overlay[gridpos][1] += text2 + "\n"
 
         # Populate overlay information
-        run_speed = getattr(self, '_run_speed', 1.0)
-        render_every_frame = getattr(self, '_render_every_frame', False)
-        paused = getattr(self, '_paused', False)
-        image_idx = getattr(self, '_image_idx', 0)
-        image_path = getattr(self, '_image_path', "frame_%d.png")
-        contacts = getattr(self, '_contacts', False)
-        joints = getattr(self, '_joints', False)
-        inertias = getattr(self, '_inertias', False)
-        com = getattr(self, '_com', False)
-        shadows = getattr(self, '_shadows', False)
-        transparent = getattr(self, '_transparent', False)
-        wire_frame = getattr(self, '_wire_frame', False)
-        convex_hull_rendering = getattr(self, '_convex_hull_rendering', False)
+        run_speed = getattr(self, "_run_speed", 1.0)
+        render_every_frame = getattr(self, "_render_every_frame", False)
+        paused = getattr(self, "_paused", False)
+        image_idx = getattr(self, "_image_idx", 0)
+        image_path = getattr(self, "_image_path", "frame_%d.png")
+        contacts = getattr(self, "_contacts", False)
+        joints = getattr(self, "_joints", False)
+        inertias = getattr(self, "_inertias", False)
+        com = getattr(self, "_com", False)
+        shadows = getattr(self, "_shadows", False)
+        transparent = getattr(self, "_transparent", False)
+        wire_frame = getattr(self, "_wire_frame", False)
+        convex_hull_rendering = getattr(self, "_convex_hull_rendering", False)
 
         if render_every_frame:
             add_overlay(topleft, "", "")
         else:
-            add_overlay(
-                topleft,
-                f"Run speed = {run_speed:.3f} x real time",
-                "[S]lower, [F]aster"
-            )
-        add_overlay(
-            topleft,
-            "Ren[d]er every frame",
-            "On" if render_every_frame else "Off"
-        )
-        add_overlay(
-            topleft, f"Switch camera (#cams = {self.model.ncam})",
-            f"[Tab] (camera ID = {self.cam.fixedcamid})"
-        )
-        add_overlay(
-            topleft,
-            "[C]ontact forces",
-            "On" if contacts else "Off"
-        )
-        add_overlay(
-            topleft,
-            "[J]oints",
-            "On" if joints else "Off"
-        )
-        add_overlay(
-            topleft,
-            "[G]raph Viewer",
-            "Off" if self._hide_graph else "On"
-        )
-        add_overlay(
-            topleft,
-            "[I]nertia",
-            "On" if inertias else "Off"
-        )
-        add_overlay(
-            topleft,
-            "Center of [M]ass",
-            "On" if com else "Off"
-        )
-        add_overlay(
-            topleft, "Shad[O]ws", "On" if shadows else "Off"
-        )
-        add_overlay(
-            topleft,
-            "T[r]ansparent",
-            "On" if transparent else "Off"
-        )
-        add_overlay(
-            topleft,
-            "[W]ireframe",
-            "On" if wire_frame else "Off"
-        )
+            add_overlay(topleft, f"Run speed = {run_speed:.3f} x real time", "[S]lower, [F]aster")
+        add_overlay(topleft, "Ren[d]er every frame", "On" if render_every_frame else "Off")
+        add_overlay(topleft, f"Switch camera (#cams = {self.model.ncam})", f"[Tab] (camera ID = {self.cam.fixedcamid})")
+        add_overlay(topleft, "[C]ontact forces", "On" if contacts else "Off")
+        add_overlay(topleft, "[J]oints", "On" if joints else "Off")
+        add_overlay(topleft, "[G]raph Viewer", "Off" if self._hide_graph else "On")
+        add_overlay(topleft, "[I]nertia", "On" if inertias else "Off")
+        add_overlay(topleft, "Center of [M]ass", "On" if com else "Off")
+        add_overlay(topleft, "Shad[O]ws", "On" if shadows else "Off")
+        add_overlay(topleft, "T[r]ansparent", "On" if transparent else "Off")
+        add_overlay(topleft, "[W]ireframe", "On" if wire_frame else "Off")
         add_overlay(
             topleft,
             "Con[V]ex Hull Rendering",
@@ -656,18 +568,11 @@ class MujocoViewer(Callbacks):
                 add_overlay(topleft, "Stop", "[Space]")
             else:
                 add_overlay(topleft, "Start", "[Space]")
-                add_overlay(
-                    topleft,
-                    "Advance simulation by one step",
-                    "[Right Arrow]"
-                )
-        add_overlay(topleft, "Toggle geomgroup visibility (0-5)",
-                    ",".join(["On" if g else "Off" for g in self.vopt.geomgroup]))
+                add_overlay(topleft, "Advance simulation by one step", "[Right Arrow]")
         add_overlay(
-            topleft,
-            "Referenc[e] frames",
-            mujoco.mjtFrame(self.vopt.frame).name
+            topleft, "Toggle geomgroup visibility (0-5)", ",".join(["On" if g else "Off" for g in self.vopt.geomgroup])
         )
+        add_overlay(topleft, "Referenc[e] frames", mujoco.mjtFrame(self.vopt.frame).name)
         add_overlay(topleft, "[H]ide Menus", "")
         if image_idx > 0:
             fname = image_path % (image_idx - 1)
@@ -678,47 +583,33 @@ class MujocoViewer(Callbacks):
         add_overlay(topleft, "[BACKSPACE] to Reload Sim", "")
 
         # Bottom-left overlay
-        fps = int(1 / getattr(self, '_time_per_render', 60))
-        add_overlay(
-            bottomleft, "FPS", f"{fps}"
-        )
-        if hasattr(self.data, 'solver_iter'):
-            add_overlay(
-                bottomleft, "Solver iterations", str(
-                    self.data.solver_iter + 1)
-            )
+        fps = int(1 / getattr(self, "_time_per_render", 60))
+        add_overlay(bottomleft, "FPS", f"{fps}")
+        if hasattr(self.data, "solver_iter"):
+            add_overlay(bottomleft, "Solver iterations", str(self.data.solver_iter + 1))
         else:
-            add_overlay(
-                bottomleft, "Solver iterations", "N/A"
-            )
+            add_overlay(bottomleft, "Solver iterations", "N/A")
         step = int(round(self.data.time / self.model.opt.timestep))
-        add_overlay(
-            bottomleft, "Step", str(step)
-        )
+        add_overlay(bottomleft, "Step", str(step))
         add_overlay(bottomleft, "timestep", f"{self.model.opt.timestep:.5f}")
 
     # --------- Perturbation and Rendering Methods --------- #
 
-    def apply_perturbations(self):
-        """
-        Apply any user-defined perturbations to the simulation.
-        """
+    def apply_perturbations(self) -> None:
+        """Apply any user-defined perturbations to the simulation."""
         self.data.xfrc_applied = np.zeros_like(self.data.xfrc_applied)
         mujoco.mjv_applyPerturbPose(self.model, self.data, self.pert, 0)
         mujoco.mjv_applyPerturbForce(self.model, self.data, self.pert)
 
-    def read_pixels(self, camid=None, depth=False):
-        """
-        Read pixel data from the simulation view.
+    def read_pixels(self, camid: int | None = None, depth: bool = False) -> tuple[np.ndarray, np.ndarray] | np.ndarray:
+        """Read pixel data from the simulation view.
 
         :param camid: Camera ID to capture pixels from. Use -1 for free camera.
         :param depth: Whether to capture depth information.
         :return: Tuple of (RGB image, Depth image) or just RGB image.
         """
-        if self.render_mode == 'window':
-            raise NotImplementedError(
-                "Use 'render()' in 'window' mode."
-            )
+        if self.render_mode == "window":
+            raise NotImplementedError("Use 'render()' in 'window' mode.")
 
         if camid is not None:
             if camid == -1:
@@ -727,17 +618,11 @@ class MujocoViewer(Callbacks):
                 self.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
                 self.cam.fixedcamid = camid
 
-        self.viewport.width, self.viewport.height = glfw.get_framebuffer_size(
-            self.window)
+        self.viewport.width, self.viewport.height = glfw.get_framebuffer_size(self.window)
         # Update scene
         mujoco.mjv_updateScene(
-            self.model,
-            self.data,
-            self.vopt,
-            self.pert,
-            self.cam,
-            mujoco.mjtCatBit.mjCAT_ALL.value,
-            self.scn)
+            self.model, self.data, self.vopt, self.pert, self.cam, mujoco.mjtCatBit.mjCAT_ALL.value, self.scn
+        )
         # Render
         mujoco.mjr_render(self.viewport, self.scn, self.ctx)
         shape = glfw.get_framebuffer_size(self.window)
@@ -752,40 +637,28 @@ class MujocoViewer(Callbacks):
             mujoco.mjr_readPixels(img, None, self.viewport, self.ctx)
             return np.flipud(img)
 
-    def render(self):
-        """
-        Render the simulation view along with the plotting panels.
-        """
-        if self.render_mode == 'offscreen':
-            raise NotImplementedError(
-                "Use 'read_pixels()' for 'offscreen' mode."
-            )
+    def render(self) -> None:
+        """Render the simulation view along with the plotting panels."""
+        if self.render_mode == "offscreen":
+            raise NotImplementedError("Use 'read_pixels()' for 'offscreen' mode.")
         if not self.is_alive:
-            raise Exception(
-                "GLFW window does not exist but you tried to render."
-            )
+            raise Exception("GLFW window does not exist but you tried to render.")
         if glfw.window_should_close(self.window):
             self.close()
             return
 
         # Define the update function to encapsulate rendering logic
-        def update():
+        def update() -> None:
             # Fill overlay items on the top-left side
             self._create_overlay()
 
             render_start = time.time()
-            self.viewport.width, self.viewport.height = glfw.get_framebuffer_size(
-                self.window)
+            self.viewport.width, self.viewport.height = glfw.get_framebuffer_size(self.window)
             with self._gui_lock:
                 # Update scene
                 mujoco.mjv_updateScene(
-                    self.model,
-                    self.data,
-                    self.vopt,
-                    self.pert,
-                    self.cam,
-                    mujoco.mjtCatBit.mjCAT_ALL.value,
-                    self.scn)
+                    self.model, self.data, self.vopt, self.pert, self.cam, mujoco.mjtCatBit.mjCAT_ALL.value, self.scn
+                )
                 # Add marker items
                 for marker in self._markers:
                     self._add_marker_to_scene(marker)
@@ -793,19 +666,11 @@ class MujocoViewer(Callbacks):
                 mujoco.mjr_render(self.viewport, self.scn, self.ctx)
                 # Render overlay items
                 for gridpos, (t1, t2) in self._overlay.items():
-                    menu_positions = [mujoco.mjtGridPos.mjGRID_TOPLEFT,
-                                      mujoco.mjtGridPos.mjGRID_BOTTOMLEFT]
+                    menu_positions = [mujoco.mjtGridPos.mjGRID_TOPLEFT, mujoco.mjtGridPos.mjGRID_BOTTOMLEFT]
                     if gridpos in menu_positions and self._hide_menus:
                         continue
 
-                    mujoco.mjr_overlay(
-                        mujoco.mjtFontScale.mjFONTSCALE_150,
-                        gridpos,
-                        self.viewport,
-                        t1,
-                        t2,
-                        self.ctx
-                    )
+                    mujoco.mjr_overlay(mujoco.mjtFontScale.mjFONTSCALE_150, gridpos, self.viewport, t1, t2, self.ctx)
 
                 # Handle rendering of both figures
                 if not self._hide_graph:
@@ -814,27 +679,18 @@ class MujocoViewer(Callbacks):
                     if not self._paused:
                         self.sensorupdate_bottom()
                     if self._num > 0:
-                        mujoco.mjr_figure(
-                            self.graph_viewport_bottom,
-                            self.fig_bottom,
-                            self.ctx
-                        )
+                        mujoco.mjr_figure(self.graph_viewport_bottom, self.fig_bottom, self.ctx)
 
                     # Render center-right graph
                     self.update_graph_size_center()
                     if not self._paused:
                         self.sensorupdate_center()
                     if self._num > 1:
-                        mujoco.mjr_figure(
-                            self.graph_viewport_center,
-                            self.fig_center,
-                            self.ctx
-                        )
+                        mujoco.mjr_figure(self.graph_viewport_center, self.fig_center, self.ctx)
 
                 glfw.swap_buffers(self.window)
             glfw.poll_events()
-            self._time_per_render = 0.9 * self._time_per_render + \
-                                    0.1 * (time.time() - render_start)
+            self._time_per_render = 0.9 * self._time_per_render + 0.1 * (time.time() - render_start)
 
             # Clear overlay
             self._overlay.clear()
@@ -850,9 +706,7 @@ class MujocoViewer(Callbacks):
                     break
         else:
             # Calculate loop count based on run speed and timestep
-            loop_increment = self.model.opt.timestep / (
-                    self._time_per_render * self._run_speed
-            )
+            loop_increment = self.model.opt.timestep / (self._time_per_render * self._run_speed)
             self._loop_count += loop_increment
             if self._render_every_frame:
                 self._loop_count = 1
@@ -866,18 +720,15 @@ class MujocoViewer(Callbacks):
         # Apply perturbations
         self.apply_perturbations()
 
-    def close(self):
-        """
-        Close the GLFW window and terminate the context.
-        """
+    def close(self) -> None:
+        """Close the GLFW window and terminate the context."""
         self.is_alive = False
         glfw.destroy_window(self.window)
         glfw.terminate()
         self.ctx.free()
 
-    def rotation_matrix_from_vectors(self, vec1, vec2):
-        """
-        Find the rotation matrix that aligns vec1 to vec2.
+    def rotation_matrix_from_vectors(self, vec1: np.ndarray, vec2: np.ndarray) -> np.ndarray:
+        """Find the rotation matrix that aligns vec1 to vec2.
 
         :param vec1: A 3D "source" vector.
         :param vec2: A 3D "destination" vector.
@@ -895,17 +746,14 @@ class MujocoViewer(Callbacks):
             rotation_matrix = -np.eye(3) + 2 * np.outer(v, v)
         else:
             s = np.linalg.norm(v)
-            kmat = np.array([[0, -v[2], v[1]],
-                             [v[2], 0, -v[0]],
-                             [-v[1], v[0], 0]])
-            rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s ** 2))
+            kmat = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+            rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s**2))
         return rotation_matrix
 
     # --------- Key Callback Method --------- #
 
-    def _key_callback(self, window, key, scancode, action, mods):
-        """
-        Handle key press events.
+    def _key_callback(self, window: glfw.Window, key: int, scancode: int, action: int, mods: int) -> None:
+        """Handle key press events.
 
         :param window: The window that received the event.
         :param key: The keyboard key that was pressed or released.
@@ -926,10 +774,8 @@ class MujocoViewer(Callbacks):
                 self.switch_camera()
             # Implement other key functionalities as needed
 
-    def switch_camera(self):
-        """
-        Switch to the next available camera.
-        """
+    def switch_camera(self) -> None:
+        """Switch to the next available camera."""
         if self.cam.type == mujoco.mjtCamera.mjCAMERA_FIXED:
             self.cam.fixedcamid = (self.cam.fixedcamid + 1) % self.model.ncam
             print(f"Switched to camera ID: {self.cam.fixedcamid}")
@@ -942,9 +788,8 @@ class MujocoViewer(Callbacks):
 
     # --------- Mouse Callback Methods --------- #
 
-    def _cursor_pos_callback(self, window, xpos, ypos):
-        """
-        Handle cursor position events.
+    def _cursor_pos_callback(self, window: glfw.Window, xpos: float, ypos: float) -> None:
+        """Handle cursor position events.
 
         :param window: The window that received the event.
         :param xpos: The new cursor x-coordinate, in pixels.
@@ -953,9 +798,8 @@ class MujocoViewer(Callbacks):
         # Pass the event to the base class or handle it here
         super()._cursor_pos_callback(window, xpos, ypos)
 
-    def _mouse_button_callback(self, window, button, action, mods):
-        """
-        Handle mouse button events.
+    def _mouse_button_callback(self, window: glfw.Window, button: int, action: int, mods: int) -> None:
+        """Handle mouse button events.
 
         :param window: The window that received the event.
         :param button: The mouse button that was pressed or released.
@@ -965,9 +809,8 @@ class MujocoViewer(Callbacks):
         # Pass the event to the base class or handle it here
         super()._mouse_button_callback(window, button, action, mods)
 
-    def _scroll_callback(self, window, xoffset, yoffset):
-        """
-        Handle scroll events.
+    def _scroll_callback(self, window: glfw.Window, xoffset: float, yoffset: float) -> None:
+        """Handle scroll events.
 
         :param window: The window that received the event.
         :param xoffset: Scroll offset along the x-axis.
@@ -976,9 +819,8 @@ class MujocoViewer(Callbacks):
         # Pass the event to the base class or handle it here
         super()._scroll_callback(window, xoffset, yoffset)
 
-    def _window_size_callback(self, window, width, height):
-        """
-        Handle window resize events.
+    def _window_size_callback(self, window: glfw.Window, width: int, height: int) -> None:
+        """Handle window resize events.
 
         :param window: The window that was resized.
         :param width: The new width, in pixels, of the window.

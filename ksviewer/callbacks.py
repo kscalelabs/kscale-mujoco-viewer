@@ -8,7 +8,7 @@ import yaml
 
 
 class Callbacks:
-    def __init__(self, hide_menus):
+    def __init__(self, hide_menus: bool) -> None:
         self._gui_lock = Lock()
         self._button_left_pressed = False
         self._button_right_pressed = False
@@ -37,7 +37,7 @@ class Callbacks:
         self._advance_by_one_step = False
         self._hide_menus = hide_menus
 
-    def _key_callback(self, window, key, scancode, action, mods):
+    def _key_callback(self, window: glfw.Window, key: int, scancode: int, action: int, mods: int) -> None:
         if action != glfw.RELEASE:
             if key == glfw.KEY_LEFT_ALT:
                 self._hide_menus = False
@@ -68,9 +68,9 @@ class Callbacks:
         # Capture screenshot
         elif key == glfw.KEY_T:
             img = np.zeros(
-                (glfw.get_framebuffer_size(
-                    self.window)[1], glfw.get_framebuffer_size(
-                    self.window)[0], 3), dtype=np.uint8)
+                (glfw.get_framebuffer_size(self.window)[1], glfw.get_framebuffer_size(self.window)[0], 3),
+                dtype=np.uint8,
+            )
             mujoco.mjr_readPixels(img, None, self.viewport, self.ctx)
             imageio.imwrite(self._image_path % self._image_idx, np.flipud(img))
             self._image_idx += 1
@@ -117,10 +117,8 @@ class Callbacks:
         # Convex-Hull rendering
         elif key == glfw.KEY_V:
             self._convex_hull_rendering = not self._convex_hull_rendering
-            self.vopt.flags[
-                mujoco.mjtVisFlag.mjVIS_CONVEXHULL
-            ] = self._convex_hull_rendering
-        # Reload Simulation 
+            self.vopt.flags[mujoco.mjtVisFlag.mjVIS_CONVEXHULL] = self._convex_hull_rendering
+        # Reload Simulation
         elif key == glfw.KEY_BACKSPACE:
             mujoco.mj_resetData(self.model, self.data)
             mujoco.mj_forward(self.model, self.data)
@@ -139,7 +137,7 @@ class Callbacks:
                 "lookat": self.cam.lookat.tolist(),
                 "distance": self.cam.distance,
                 "azimuth": self.cam.azimuth,
-                "elevation": self.cam.elevation
+                "elevation": self.cam.elevation,
             }
             try:
                 with open(self.CONFIG_PATH, "w") as f:
@@ -154,13 +152,14 @@ class Callbacks:
             glfw.set_window_should_close(self.window, True)
         return
 
-    def _cursor_pos_callback(self, window, xpos, ypos):
+    def _cursor_pos_callback(self, window: glfw.Window, xpos: float, ypos: float) -> None:
         if not (self._button_left_pressed or self._button_right_pressed):
             return
 
         mod_shift = (
-            glfw.get_key(window, glfw.KEY_LEFT_SHIFT) == glfw.PRESS or
-            glfw.get_key(window, glfw.KEY_RIGHT_SHIFT) == glfw.PRESS)
+            glfw.get_key(window, glfw.KEY_LEFT_SHIFT) == glfw.PRESS
+            or glfw.get_key(window, glfw.KEY_RIGHT_SHIFT) == glfw.PRESS
+        )
         if self._button_right_pressed:
             action = mujoco.mjtMouse.mjMOUSE_MOVE_H if mod_shift else mujoco.mjtMouse.mjMOUSE_MOVE_V
         elif self._button_left_pressed:
@@ -174,27 +173,14 @@ class Callbacks:
 
         with self._gui_lock:
             if self.pert.active:
-                mujoco.mjv_movePerturb(
-                    self.model,
-                    self.data,
-                    action,
-                    dx / height,
-                    dy / height,
-                    self.scn,
-                    self.pert)
+                mujoco.mjv_movePerturb(self.model, self.data, action, dx / height, dy / height, self.scn, self.pert)
             else:
-                mujoco.mjv_moveCamera(
-                    self.model,
-                    action,
-                    dx / height,
-                    dy / height,
-                    self.scn,
-                    self.cam)
+                mujoco.mjv_moveCamera(self.model, action, dx / height, dy / height, self.scn, self.cam)
 
         self._last_mouse_x = int(self._scale * xpos)
         self._last_mouse_y = int(self._scale * ypos)
 
-    def _mouse_button_callback(self, window, button, act, mods):
+    def _mouse_button_callback(self, window: glfw.Window, button: int, act: int, mods: int) -> None:
         self._button_left_pressed = button == glfw.MOUSE_BUTTON_LEFT and act == glfw.PRESS
         self._button_right_pressed = button == glfw.MOUSE_BUTTON_RIGHT and act == glfw.PRESS
 
@@ -211,7 +197,7 @@ class Callbacks:
             if self._last_left_click_time is None:
                 self._last_left_click_time = glfw.get_time()
 
-            time_diff = (time_now - self._last_left_click_time)
+            time_diff = time_now - self._last_left_click_time
             if time_diff > 0.01 and time_diff < 0.3:
                 self._left_double_click_pressed = True
             self._last_left_click_time = time_now
@@ -220,7 +206,7 @@ class Callbacks:
             if self._last_right_click_time is None:
                 self._last_right_click_time = glfw.get_time()
 
-            time_diff = (time_now - self._last_right_click_time)
+            time_diff = time_now - self._last_right_click_time
             if time_diff > 0.01 and time_diff < 0.2:
                 self._right_double_click_pressed = True
             self._last_right_click_time = time_now
@@ -237,8 +223,7 @@ class Callbacks:
 
             # perturbation onste: reset reference
             if newperturb and not self.pert.active:
-                mujoco.mjv_initPerturb(
-                    self.model, self.data, self.scn, self.pert)
+                mujoco.mjv_initPerturb(self.model, self.data, self.scn, self.pert)
         self.pert.active = newperturb
 
         # handle doubleclick
@@ -261,16 +246,8 @@ class Callbacks:
             selgeom = np.zeros((1, 1), dtype=np.int32)
             selskin = np.zeros((1, 1), dtype=np.int32)
             selbody = mujoco.mjv_select(
-                self.model,
-                self.data,
-                self.vopt,
-                aspectratio,
-                relx,
-                rely,
-                self.scn,
-                selpnt,
-                selgeom,
-                selskin)
+                self.model, self.data, self.vopt, aspectratio, relx, rely, self.scn, selpnt, selgeom, selskin
+            )
 
             # set lookat point, start tracking is requested
             if selmode == 2 or selmode == 3:
@@ -291,8 +268,7 @@ class Callbacks:
                     # compute localpos
                     vec = selpnt.flatten() - self.data.xpos[selbody]
                     mat = self.data.xmat[selbody].reshape(3, 3)
-                    self.pert.localpos = self.data.xmat[selbody].reshape(
-                        3, 3).dot(vec)
+                    self.pert.localpos = self.data.xmat[selbody].reshape(3, 3).dot(vec)
                 else:
                     self.pert.select = 0
                     self.pert.skinselect = -1
@@ -303,7 +279,6 @@ class Callbacks:
         if act == glfw.RELEASE:
             self.pert.active = 0
 
-    def _scroll_callback(self, window, x_offset, y_offset):
+    def _scroll_callback(self, window: glfw.Window, x_offset: float, y_offset: float) -> None:
         with self._gui_lock:
-            mujoco.mjv_moveCamera(
-                self.model, mujoco.mjtMouse.mjMOUSE_ZOOM, 0, -0.05 * y_offset, self.scn, self.cam)
+            mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_ZOOM, 0, -0.05 * y_offset, self.scn, self.cam)
