@@ -1,11 +1,32 @@
 """Utilities for rendering the environment."""
 
 from types import TracebackType
-from typing import Any, Optional, Union, Unpack
+from typing import Optional, Protocol, Union
 
 import mujoco
 import mujoco.viewer
 import numpy as np
+
+
+class CameraConfig(Protocol):
+    """Protocol for camera configuration."""
+
+    render_distance: float
+    render_azimuth: float
+    render_elevation: float
+    render_lookat: list[float]
+    render_track_body_id: Optional[int]
+
+
+class CommandValue(Protocol):
+    """Protocol for command values."""
+
+    @property
+    def shape(self) -> tuple[int, ...]: ...
+
+    def __len__(self) -> int: ...
+
+    def __getitem__(self, idx: int) -> float: ...
 
 
 class MujocoViewerHandler:
@@ -17,7 +38,7 @@ class MujocoViewerHandler:
         render_height: int = 480,
     ) -> None:
         self.handle = handle
-        self._markers = []
+        self._markers: list[dict[str, object]] = []
 
         # Initialize renderer for pixel capture if requested
         self._capture_pixels = capture_pixels
@@ -29,7 +50,7 @@ class MujocoViewerHandler:
         if self._capture_pixels and self.handle.m is not None:
             self._renderer = mujoco.Renderer(self.handle.m, width=render_width, height=render_height)
 
-    def setup_camera(self, config: dict[str, Any]) -> None:
+    def setup_camera(self, config: CameraConfig) -> None:
         """Setup the camera with the given configuration."""
         self.handle.cam.distance = config.render_distance
         self.handle.cam.azimuth = config.render_azimuth
@@ -76,31 +97,44 @@ class MujocoViewerHandler:
             }
         )
 
-    def add_commands(self, commands: dict[str, Any]) -> None:
+    def add_commands(self, commands: dict[str, object]) -> None:
         """Add visual representations of commands to the scene."""
         # Handle linear velocity command
         if "linear_velocity_command" in commands:
             command_vel = commands["linear_velocity_command"]
 
-            # Check if it's a numpy array-like with at least 2 elements
-            if hasattr(command_vel, "shape") and len(command_vel) >= 2:
-                # Draw X velocity arrow (forward/backward)
-                self.add_velocity_arrow(
-                    command_vel[0],
-                    base_pos=(0, 0, 1.7),
-                    rgba=(1.0, 0.0, 0.0, 0.8),  # Red for X
-                    direction=[1.0, 0.0, 0.0],
-                    label=f"X Cmd: {command_vel[0]:.2f}",
-                )
+            # Check if it's array-like with indexable values and length
+            if (
+                hasattr(command_vel, "shape")
+                and hasattr(command_vel, "__len__")
+                and hasattr(command_vel, "__getitem__")
+                and len(command_vel) >= 2
+            ):
+                try:
+                    # Access values safely with type checking
+                    x_cmd = float(command_vel[0])
+                    y_cmd = float(command_vel[1])
 
-                # Draw Y velocity arrow (left/right)
-                self.add_velocity_arrow(
-                    command_vel[1],
-                    base_pos=(0, 0, 1.5),
-                    rgba=(0.0, 1.0, 0.0, 0.8),  # Green for Y
-                    direction=[0.0, 1.0, 0.0],
-                    label=f"Y Cmd: {command_vel[1]:.2f}",
-                )
+                    # Draw X velocity arrow (forward/backward)
+                    self.add_velocity_arrow(
+                        x_cmd,
+                        base_pos=(0, 0, 1.7),
+                        rgba=(1.0, 0.0, 0.0, 0.8),  # Red for X
+                        direction=[1.0, 0.0, 0.0],
+                        label=f"X Cmd: {x_cmd:.2f}",
+                    )
+
+                    # Draw Y velocity arrow (left/right)
+                    self.add_velocity_arrow(
+                        y_cmd,
+                        base_pos=(0, 0, 1.5),
+                        rgba=(0.0, 1.0, 0.0, 0.8),  # Green for Y
+                        direction=[0.0, 1.0, 0.0],
+                        label=f"Y Cmd: {y_cmd:.2f}",
+                    )
+                except (IndexError, TypeError, ValueError):
+                    # Handle errors during access or conversion gracefully
+                    pass
 
     def add_velocity_arrow(
         self,
@@ -130,7 +164,7 @@ class MujocoViewerHandler:
             direction = [-d for d in direction]
 
         # Get rotation matrix for the direction
-        mat = rotation_matrix_from_direction(direction)
+        mat = rotation_matrix_from_direction(np.array(direction))
 
         # Scale the arrow length by the velocity magnitude
         length = abs(command_velocity) * scale
@@ -139,7 +173,7 @@ class MujocoViewerHandler:
         self.add_marker(
             pos=base_pos,
             mat=mat,
-            size=[0.02, 0.02, max(0.001, length)],
+            size=(0.02, 0.02, max(0.001, length)),
             rgba=rgba,
             type=mujoco.mjtGeom.mjGEOM_ARROW,
             label=label if label is not None else f"Cmd: {command_velocity:.2f}",
@@ -268,7 +302,7 @@ def launch_passive(
     show_left_ui: bool = False,
     show_right_ui: bool = False,
     capture_pixels: bool = False,
-    **kwargs: Unpack[dict[str, object]],
+    **kwargs: object,
 ) -> MujocoViewerHandlerContext:
     """Drop-in replacement for viewer.launch_passive."""
     handle = mujoco.viewer.launch_passive(model, data, show_left_ui=show_left_ui, show_right_ui=show_right_ui, **kwargs)
