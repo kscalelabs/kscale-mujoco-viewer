@@ -1,5 +1,7 @@
 """Utilities for rendering the environment."""
 
+import logging
+import traceback
 from pathlib import Path
 from types import TracebackType
 from typing import Optional, Sequence, Union
@@ -12,6 +14,8 @@ from omegaconf import DictConfig
 from kmv.utils.saving import save_video
 from kmv.utils.transforms import rotation_matrix_from_direction
 from kmv.utils.types import get_config_value
+
+logger = logging.getLogger(__name__)
 
 
 class MujocoViewerHandler:
@@ -124,8 +128,11 @@ class MujocoViewerHandler:
                         label=f"Y Cmd: {y_cmd:.2f}",
                     )
                 except (IndexError, TypeError, ValueError):
-                    # Handle errors during access or conversion gracefully
-                    pass
+                    logger.warning(
+                        "Failed to add velocity arrow for command %s with error traceback: %s",
+                        command_vel,
+                        traceback.format_exc(),
+                    )
 
     def add_velocity_arrow(
         self,

@@ -1,10 +1,13 @@
 """Utility functions for saving data."""
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import PIL.Image
+
+logger = logging.getLogger(__name__)
 
 
 def save_video(frames: list[np.ndarray], save_path: Optional[str | Path] = None, fps: int = 30) -> None:
@@ -44,6 +47,8 @@ def save_video(frames: list[np.ndarray], save_path: Optional[str | Path] = None,
                 with imageio.get_writer(path, mode="I", fps=fps) as writer:
                     for frame in frames:
                         writer.append_data(frame)  # type: ignore[attr-defined]
+
+                    logger.info("Saved mp4 video with %d frames to: %s", len(frames), path)
             except Exception as e:
                 raise RuntimeError(
                     "Failed to save video - note that saving .mp4 videos with imageio usually "
@@ -61,6 +66,7 @@ def save_video(frames: list[np.ndarray], save_path: Optional[str | Path] = None,
                 duration=int(1000 / fps),
                 loop=0,
             )
+            logger.info("Saved GIF with %d frames to %s", len(frames), path)
 
         case _:
             raise ValueError(f"Unsupported file extension: {path.suffix}. Expected .mp4 or .gif")
