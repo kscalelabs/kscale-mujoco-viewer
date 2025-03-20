@@ -1,9 +1,11 @@
 """Utilities for rendering the environment."""
 
+from types import TracebackType
+from typing import Any, Optional, Union, Unpack
+
 import mujoco
 import mujoco.viewer
 import numpy as np
-from PIL import Image
 
 
 class MujocoViewerHandler:
@@ -13,7 +15,7 @@ class MujocoViewerHandler:
         capture_pixels: bool = False,
         render_width: int = 640,
         render_height: int = 480,
-    ):
+    ) -> None:
         self.handle = handle
         self._markers = []
 
@@ -27,7 +29,7 @@ class MujocoViewerHandler:
         if self._capture_pixels and self.handle.m is not None:
             self._renderer = mujoco.Renderer(self.handle.m, width=render_width, height=render_height)
 
-    def setup_camera(self, config: dict):
+    def setup_camera(self, config: dict[str, Any]) -> None:
         """Setup the camera with the given configuration."""
         self.handle.cam.distance = config.render_distance
         self.handle.cam.azimuth = config.render_azimuth
@@ -37,7 +39,7 @@ class MujocoViewerHandler:
             self.handle.cam.trackbodyid = config.render_track_body_id
             self.handle.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
 
-    def copy_data(self, dst: mujoco.MjData, src: mujoco.MjData):
+    def copy_data(self, dst: mujoco.MjData, src: mujoco.MjData) -> None:
         """Copy the data from the source to the destination."""
         dst.ctrl[:] = src.ctrl[:]
         dst.act[:] = src.act[:]
@@ -46,7 +48,7 @@ class MujocoViewerHandler:
         dst.qvel[:] = src.qvel[:]
         dst.time = src.time
 
-    def clear_markers(self):
+    def clear_markers(self) -> None:
         """Clear all markers from the scene."""
         if self.handle._user_scn is not None:
             # Reset the geom counter to effectively clear all markers
@@ -54,8 +56,14 @@ class MujocoViewerHandler:
             self._markers = []
 
     def add_marker(
-        self, pos, size=(0.1, 0, 0), rgba=(1, 0, 0, 1), type=mujoco.mjtGeom.mjGEOM_SPHERE, mat=None, label=""
-    ):
+        self,
+        pos: Union[list[float], tuple[float, float, float], np.ndarray],
+        size: tuple[float, float, float] = (0.1, 0, 0),
+        rgba: tuple[float, float, float, float] = (1, 0, 0, 1),
+        type: int = mujoco.mjtGeom.mjGEOM_SPHERE,
+        mat: Optional[np.ndarray] = None,
+        label: str = "",
+    ) -> None:
         """Add a marker to be rendered in the scene."""
         self._markers.append(
             {
@@ -68,12 +76,8 @@ class MujocoViewerHandler:
             }
         )
 
-    def add_commands(self, commands):
-        """Add visual representations of commands to the scene.
-
-        Args:
-            commands: A dictionary of commands from the engine variables.
-        """
+    def add_commands(self, commands: dict[str, Any]) -> None:
+        """Add visual representations of commands to the scene."""
         # Handle linear velocity command
         if "linear_velocity_command" in commands:
             command_vel = commands["linear_velocity_command"]
@@ -99,8 +103,14 @@ class MujocoViewerHandler:
                 )
 
     def add_velocity_arrow(
-        self, command_velocity, base_pos=(0, 0, 1.7), scale=0.1, rgba=(0, 1.0, 0, 1.0), direction=None, label=None
-    ):
+        self,
+        command_velocity: float,
+        base_pos: tuple[float, float, float] = (0, 0, 1.7),
+        scale: float = 0.1,
+        rgba: tuple[float, float, float, float] = (0, 1.0, 0, 1.0),
+        direction: Optional[list[float]] = None,
+        label: Optional[str] = None,
+    ) -> None:
         """Add an arrow showing command velocity.
 
         Args:
@@ -108,7 +118,8 @@ class MujocoViewerHandler:
             base_pos: Position for the arrow base
             scale: Scale factor for arrow length
             rgba: Color of the arrow
-            direction: Optional direction vector [x,y,z]. If provided, arrow points in this direction
+            direction: Optional direction vector [x,y,z]
+            label: Optional text label for the arrow
         """
         # Default to x-axis if no direction provided
         if direction is None:
@@ -134,7 +145,7 @@ class MujocoViewerHandler:
             label=label if label is not None else f"Cmd: {command_velocity:.2f}",
         )
 
-    def _update_scene_markers(self):
+    def _update_scene_markers(self) -> None:
         """Add all current markers to the scene."""
         if self.handle._user_scn is None:
             return
@@ -162,16 +173,12 @@ class MujocoViewerHandler:
 
                 self.handle._user_scn.ngeom += 1
 
-    def sync(self):
+    def sync(self) -> None:
         """Sync the viewer with current state."""
         self.handle.sync()
 
     def read_pixels(self) -> np.ndarray:
-        """Read the current viewport pixels as a numpy array.
-
-        Returns:
-            A numpy array of shape (height, width, 3) containing RGB pixel values.
-        """
+        """Read the current viewport pixels as a numpy array."""
         # Force a sync to ensure the current state is displayed
         self.handle.sync()
 
@@ -234,48 +241,42 @@ class MujocoViewerHandler:
 
         return pixels
 
-    def update_and_sync(self):
+    def update_and_sync(self) -> None:
         """Update the marks, sync with viewer, and clear the markers."""
         self._update_scene_markers()
         self.sync()
         self.clear_markers()
 
 
-def launch_passive(model, data, show_left_ui=False, show_right_ui=False, capture_pixels=False, **kwargs):
-    """Drop-in replacement for viewer.launch_passive."""
-    # Launch the standard viewer without specifying dimensions
-    handle = mujoco.viewer.launch_passive(model, data, show_left_ui=show_left_ui, show_right_ui=show_right_ui, **kwargs)
-    # Wrap it with our enhanced version
-    return MujocoViewerHandlerContext(handle, capture_pixels=capture_pixels)
-
-
 class MujocoViewerHandlerContext:
-    def __init__(self, handle: mujoco.viewer.Handle, capture_pixels=False):
+    def __init__(self, handle: mujoco.viewer.Handle, capture_pixels: bool = False) -> None:
         self.handle = handle
         self.capture_pixels = capture_pixels
 
-    def __enter__(self):
+    def __enter__(self) -> MujocoViewerHandler:
         return MujocoViewerHandler(self.handle, capture_pixels=self.capture_pixels)
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(
+        self, exc_type: Optional[type], exc_value: Optional[Exception], traceback: Optional[TracebackType]
+    ) -> None:
         self.handle.close()
 
 
+def launch_passive(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    show_left_ui: bool = False,
+    show_right_ui: bool = False,
+    capture_pixels: bool = False,
+    **kwargs: Unpack[dict[str, object]],
+) -> MujocoViewerHandlerContext:
+    """Drop-in replacement for viewer.launch_passive."""
+    handle = mujoco.viewer.launch_passive(model, data, show_left_ui=show_left_ui, show_right_ui=show_right_ui, **kwargs)
+    return MujocoViewerHandlerContext(handle, capture_pixels=capture_pixels)
+
+
 def rotation_matrix_from_direction(direction: np.ndarray, reference: np.ndarray = np.array([0, 0, 1])) -> np.ndarray:
-    """Compute a rotation matrix that aligns the reference vector with the direction vector.
-
-    This is particularly useful for orienting objects (like arrows) in MuJoCo
-    to point in a specific direction.
-
-    Args:
-        direction: The target direction vector [x, y, z].
-        reference: The reference vector that will be aligned with direction.
-                  Default is [0, 0, 1] (MuJoCo's default arrow direction).
-
-    Returns:
-        A 3x3 rotation matrix that rotates the reference vector to point
-        in the direction of the direction vector.
-    """
+    """Compute a rotation matrix that aligns the reference vector with the direction vector."""
     # Normalize direction vector
     dir_vec = np.array(direction, dtype=float)
     norm = np.linalg.norm(dir_vec)
