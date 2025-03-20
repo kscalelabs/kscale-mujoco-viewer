@@ -1,1 +1,1 @@
-recursive-include kscale_mujoco_viewer/ *.py *.txt py.typed MANIFEST.in
+recursive-include kmv/ *.py *.txt py.typed MANIFEST.in

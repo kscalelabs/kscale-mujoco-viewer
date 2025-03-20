@@ -10,22 +10,22 @@ with open("README.md", "r", encoding="utf-8") as f:
     long_description: str = f.read()
 
 
-with open("ksviewer/requirements.txt", "r", encoding="utf-8") as f:
+with open("kmv/requirements.txt", "r", encoding="utf-8") as f:
     requirements: list[str] = f.read().splitlines()
 
 
-with open("ksviewer/requirements-dev.txt", "r", encoding="utf-8") as f:
+with open("kmv/requirements-dev.txt", "r", encoding="utf-8") as f:
     requirements_dev: list[str] = f.read().splitlines()
 
 
-with open("ksviewer/__init__.py", "r", encoding="utf-8") as fh:
+with open("kmv/__init__.py", "r", encoding="utf-8") as fh:
     version_re = re.search(r"^__version__ = \"([^\"]*)\"", fh.read(), re.MULTILINE)
-assert version_re is not None, "Could not find version in ksviewer/__init__.py"
+assert version_re is not None, "Could not find version in kmv/__init__.py"
 version: str = version_re.group(1)
 
 
 setup(
-    name="kscale-mujoco-viewer",
+    name="kmv",
     version=version,
     description="The kscale-mujoco-viewer project",
     author="Wesley Maa",
@@ -36,10 +36,10 @@ setup(
     install_requires=requirements,
     tests_require=requirements_dev,
     extras_require={"dev": requirements_dev},
-    packages=["ksviewer"],
+    packages=["kmv"],
     # entry_points={
     #     "console_scripts": [
-    #         "kscale_mujoco_viewer.cli:main",
+    #         "kmv.cli:main",
     #     ],
     # },
 )

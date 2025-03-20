@@ -63,7 +63,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.isort]
 
-known-first-party = ["kscale_mujoco_viewer", "tests"]
+known-first-party = ["kmv", "tests"]
 combine-as-imports = true
 
 [tool.ruff.lint.pydocstyle]
