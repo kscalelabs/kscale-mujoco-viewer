@@ -21,22 +21,18 @@ class MujocoViewerHandler:
         capture_pixels: bool = False,
         save_path: str | Path | None = None,
         config: "DictConfig | dict[str, object] | None" = None,
-        render_width: int = 640,
-        render_height: int = 480,
     ) -> None:
         self.handle = handle
         self._markers: list[dict[str, object]] = []
         self._frames: list[np.ndarray] = []
-        # Initialize renderer for pixel capture if requested
         self._capture_pixels = capture_pixels
         self._save_path = Path(save_path) if save_path is not None else None
-        self._render_width = render_width
-        self._render_height = render_height
         self._renderer = None
         self._config = config
-        self._initial_z_offset: Optional[float] = None  # Store the initial z position + offset
-        # If we're going to capture pixels, initialize the renderer now
-        if self._capture_pixels and self.handle.m is not None:
+
+        if (self._capture_pixels and self.handle.m is not None) or (self._save_path is not None):
+            render_width = get_config_value(config, "render_width", 640)
+            render_height = get_config_value(config, "render_height", 480)
             self._renderer = mujoco.Renderer(self.handle.m, width=render_width, height=render_height)
 
     def setup_camera(self, config: "DictConfig | dict[str, object]") -> None:
@@ -234,6 +230,12 @@ class MujocoViewerHandler:
 
     def read_pixels(self) -> np.ndarray:
         """Read the current viewport pixels as a numpy array."""
+        # Initialize or update the renderer if needed
+        if self._renderer is None:
+            raise ValueError(
+                "Renderer not initialized. "
+                "For off-screen rendering, initialize with `capture_pixels=True` or `save_path`"
+            )
         # Force a sync to ensure the current state is displayed
         self.handle.sync()
 
@@ -243,11 +245,7 @@ class MujocoViewerHandler:
 
         if model is None or data is None:
             # If model or data is not available, return empty array with render dimensions
-            return np.zeros((self._render_height, self._render_width, 3), dtype=np.uint8)
-
-        # Initialize or update the renderer if needed
-        if self._renderer is None:
-            self._renderer = mujoco.Renderer(model, height=self._render_height, width=self._render_width)
+            return np.zeros((self._renderer.height, self._renderer.width, 3), dtype=np.uint8)
 
         # Get the current camera settings from the viewer
         camera = self.get_camera()
@@ -277,17 +275,11 @@ class MujocoViewerHandlerContext:
         handle: mujoco.viewer.Handle,
         capture_pixels: bool = False,
         save_path: str | Path | None = None,
-        render_width: int = 640,
-        render_height: int = 480,
-        fps: int = 30,
         config: "DictConfig | dict[str, object] | None" = None,
     ) -> None:
         self.handle = handle
         self.capture_pixels = capture_pixels
         self.save_path = save_path
-        self.render_width = render_width
-        self.render_height = render_height
-        self.fps = fps
         self.config = config
         self.handler: Optional[MujocoViewerHandler] = None  # Properly typed
 
@@ -296,8 +288,6 @@ class MujocoViewerHandlerContext:
             self.handle,
             capture_pixels=self.capture_pixels,
             save_path=self.save_path,
-            render_width=self.render_width,
-            render_height=self.render_height,
             config=self.config,
         )
         return self.handler
@@ -307,13 +297,10 @@ class MujocoViewerHandlerContext:
     ) -> None:
         # If we have a handler and a save path, save the video before closing
         if self.handler is not None and self.save_path is not None:
-            fps = self.fps
-
-            # Get the control timestep if available
+            fps = 30
             ctrl_dt: Optional[float] = get_config_value(self.config, "ctrl_dt")
             if ctrl_dt is not None:
                 fps = round(1 / float(ctrl_dt))
-
             save_video(self.handler._frames, self.save_path, fps=fps)
 
         # Always close the handle
@@ -327,13 +314,12 @@ def launch_passive(
     show_right_ui: bool = False,
     capture_pixels: bool = False,
     save_path: str | Path | None = None,
-    render_width: int = 640,
-    render_height: int = 480,
-    fps: int = 30,
     config: "DictConfig | dict[str, object] | None" = None,
     **kwargs: object,
 ) -> MujocoViewerHandlerContext:
-    """Drop-in replacement for viewer.launch_passive.
+    """Drop-in replacement for mujoco.viewer.launch_passive.
+
+    See https://github.com/google-deepmind/mujoco/blob/main/python/mujoco/viewer.py
 
     Args:
         model: The MjModel to render
@@ -342,9 +328,6 @@ def launch_passive(
         show_right_ui: Whether to show the right UI panel
         capture_pixels: Whether to capture pixels for video saving
         save_path: Where to save the video (MP4 or GIF)
-        render_width: Width of the rendering window
-        render_height: Height of the rendering window
-        fps: Frames per second for saved video
         config: Configuration object (supports either DictConfig or standard dict)
         **kwargs: Additional arguments to pass to mujoco.viewer.launch_passive
 
@@ -356,8 +339,5 @@ def launch_passive(
         handle,
         capture_pixels=capture_pixels,
         save_path=save_path,
-        render_width=render_width,
-        render_height=render_height,
-        fps=fps,
         config=config,
     )
