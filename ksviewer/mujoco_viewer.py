@@ -23,7 +23,7 @@ class MujocoViewer(Callbacks):
         height: int | None = None,
         window_start_x_pixel_offset: int = 6,
         window_start_y_pixel_offset: int = 30,
-        hide_menus: bool = False,
+        hide_menus: bool = True,
         panel_num: int = 0,
     ) -> None:
         super().__init__(hide_menus)
@@ -588,6 +588,7 @@ class MujocoViewer(Callbacks):
             add_overlay(bottomleft, "Solver iterations", "N/A")
         step = int(round(self.data.time / self.model.opt.timestep))
         add_overlay(bottomleft, "Step", str(step))
+        add_overlay(bottomleft, "Time", f"{self.data.time:.3f}")
         add_overlay(bottomleft, "timestep", f"{self.model.opt.timestep:.5f}")
 
     # --------- Perturbation and Rendering Methods --------- #
