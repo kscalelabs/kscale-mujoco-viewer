@@ -2,28 +2,15 @@
 
 from pathlib import Path
 from types import TracebackType
-from typing import Optional, Protocol, Union
+from typing import TYPE_CHECKING, Optional, Protocol, Sequence, TypeVar, Union, cast
 
 import mujoco
 import mujoco.viewer
 import numpy as np
 import PIL.Image
 
-
-class CameraConfig(Protocol):
-    """Protocol for camera configuration."""
-
-    render_distance: float
-    render_azimuth: float
-    render_elevation: float
-    render_lookat: list[float]
-    render_track_body_id: Optional[int] = None
-
-
-class UserConfig(Protocol):
-    """Protocol for user configuration."""
-
-    ctrl_dt: float
+if TYPE_CHECKING:
+    from omegaconf import DictConfig
 
 
 class CommandValue(Protocol):
@@ -37,13 +24,46 @@ class CommandValue(Protocol):
     def __getitem__(self, idx: int) -> float: ...
 
 
+# Define T as TypeVar that allows None to handle Optional values properly
+T = TypeVar("T", bound=Optional[object])
+
+
+def get_config_value(
+    config: "DictConfig | dict[str, object] | None", key: str, default: Optional[T] = None
+) -> Optional[T]:
+    """Get a value from config object regardless of its actual type.
+
+    Tries attribute access first (for DictConfig), then falls back to dictionary access.
+
+    Args:
+        config: The configuration object
+        key: The key to access
+        default: Default value to return if key is not found
+
+    Returns:
+        The value at the given key or the default
+    """
+    if config is None:
+        return default
+
+    try:
+        # Cast the result to match the expected return type
+        return cast(Optional[T], getattr(config, key))
+    except AttributeError:
+        try:
+            # Cast the result to match the expected return type
+            return cast(Optional[T], config[key])
+        except (KeyError, TypeError):
+            return default
+
+
 class MujocoViewerHandler:
     def __init__(
         self,
         handle: mujoco.viewer.Handle,
         capture_pixels: bool = False,
         save_path: str | Path | None = None,
-        config: UserConfig | None = None,
+        config: "DictConfig | dict[str, object] | None" = None,
         render_width: int = 640,
         render_height: int = 480,
     ) -> None:
@@ -57,18 +77,26 @@ class MujocoViewerHandler:
         self._render_height = render_height
         self._renderer = None
         self._config = config
+        self._initial_z_offset: Optional[float] = None  # Store the initial z position + offset
         # If we're going to capture pixels, initialize the renderer now
         if self._capture_pixels and self.handle.m is not None:
             self._renderer = mujoco.Renderer(self.handle.m, width=render_width, height=render_height)
 
-    def setup_camera(self, config: CameraConfig) -> None:
-        """Setup the camera with the given configuration."""
-        self.handle.cam.distance = config.render_distance
-        self.handle.cam.azimuth = config.render_azimuth
-        self.handle.cam.elevation = config.render_elevation
-        self.handle.cam.lookat[:] = config.render_lookat
-        if config.render_track_body_id is not None:
-            self.handle.cam.trackbodyid = config.render_track_body_id
+    def setup_camera(self, config: "DictConfig | dict[str, object]") -> None:
+        """Setup the camera with the given configuration.
+
+        Args:
+            config: Configuration with render_distance, render_azimuth, render_elevation,
+                   render_lookat, and optionally render_track_body_id.
+        """
+        self.handle.cam.distance = get_config_value(config, "render_distance", 5.0)
+        self.handle.cam.azimuth = get_config_value(config, "render_azimuth", 90.0)
+        self.handle.cam.elevation = get_config_value(config, "render_elevation", -30.0)
+        self.handle.cam.lookat[:] = get_config_value(config, "render_lookat", [0.0, 0.0, 0.5])
+
+        track_body_id: Optional[int] = get_config_value(config, "render_track_body_id")
+        if track_body_id is not None:
+            self.handle.cam.trackbodyid = track_body_id
             self.handle.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
 
     def copy_data(self, dst: mujoco.MjData, src: mujoco.MjData) -> None:
@@ -152,7 +180,7 @@ class MujocoViewerHandler:
         base_pos: tuple[float, float, float] = (0, 0, 1.7),
         scale: float = 0.1,
         rgba: tuple[float, float, float, float] = (0, 1.0, 0, 1.0),
-        direction: Optional[list[float]] = None,
+        direction: Optional[Sequence[float]] = None,
         label: Optional[str] = None,
     ) -> None:
         """Add an arrow showing command velocity.
@@ -202,7 +230,6 @@ class MujocoViewerHandler:
         Args:
             scene: The MjvScene to apply markers to
         """
-        # breakpoint()
         for marker in self._markers:
             if scene.ngeom < scene.maxgeom:
                 g = scene.geoms[scene.ngeom]
@@ -353,7 +380,7 @@ class MujocoViewerHandlerContext:
         render_width: int = 640,
         render_height: int = 480,
         fps: int = 30,
-        config: UserConfig | None = None,
+        config: "DictConfig | dict[str, object] | None" = None,
     ) -> None:
         self.handle = handle
         self.capture_pixels = capture_pixels
@@ -381,8 +408,12 @@ class MujocoViewerHandlerContext:
         # If we have a handler and a save path, save the video before closing
         if self.handler is not None and self.save_path is not None:
             fps = self.fps
-            if self.config is not None:
-                fps = round(1 / self.config.ctrl_dt)
+
+            # Get the control timestep if available
+            ctrl_dt: Optional[float] = get_config_value(self.config, "ctrl_dt")
+            if ctrl_dt is not None:
+                fps = round(1 / float(ctrl_dt))
+
             self.handler.save_video(self.save_path, fps=fps)
 
         # Always close the handle
@@ -399,7 +430,7 @@ def launch_passive(
     render_width: int = 640,
     render_height: int = 480,
     fps: int = 30,
-    config: UserConfig | None = None,
+    config: "DictConfig | dict[str, object] | None" = None,
     **kwargs: object,
 ) -> MujocoViewerHandlerContext:
     """Drop-in replacement for viewer.launch_passive.
@@ -414,7 +445,7 @@ def launch_passive(
         render_width: Width of the rendering window
         render_height: Height of the rendering window
         fps: Frames per second for saved video
-        config: User configuration
+        config: Configuration object (supports either DictConfig or standard dict)
         **kwargs: Additional arguments to pass to mujoco.viewer.launch_passive
 
     Returns:
