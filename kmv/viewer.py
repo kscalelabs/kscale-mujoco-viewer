@@ -1,5 +1,6 @@
 """Utilities for rendering the environment."""
 
+from pathlib import Path
 from types import TracebackType
 from typing import Optional, Protocol, Union
 
@@ -15,7 +16,7 @@ class CameraConfig(Protocol):
     render_azimuth: float
     render_elevation: float
     render_lookat: list[float]
-    render_track_body_id: Optional[int]
+    render_track_body_id: Optional[int] = None
 
 
 class CommandValue(Protocol):
@@ -34,14 +35,16 @@ class MujocoViewerHandler:
         self,
         handle: mujoco.viewer.Handle,
         capture_pixels: bool = False,
+        save_path: str | Path | None = None,
         render_width: int = 640,
         render_height: int = 480,
     ) -> None:
         self.handle = handle
         self._markers: list[dict[str, object]] = []
-
+        self._frames: list[np.ndarray] = []
         # Initialize renderer for pixel capture if requested
         self._capture_pixels = capture_pixels
+        self._save_path = Path(save_path) if save_path is not None else None
         self._render_width = render_width
         self._render_height = render_height
         self._renderer = None
@@ -184,9 +187,18 @@ class MujocoViewerHandler:
         if self.handle._user_scn is None:
             return
 
+        self._apply_markers_to_scene(self.handle._user_scn)
+
+    def _apply_markers_to_scene(self, scene: mujoco.MjvScene) -> None:
+        """Apply markers to the provided scene.
+
+        Args:
+            scene: The MjvScene to apply markers to
+        """
+        # breakpoint()
         for marker in self._markers:
-            if self.handle._user_scn.ngeom < self.handle._user_scn.maxgeom:
-                g = self.handle._user_scn.geoms[self.handle._user_scn.ngeom]
+            if scene.ngeom < scene.maxgeom:
+                g = scene.geoms[scene.ngeom]
 
                 # Set basic properties
                 g.type = marker["type"]
@@ -194,7 +206,12 @@ class MujocoViewerHandler:
                 g.pos[:] = marker["pos"]
                 g.mat[:] = marker["mat"]
                 g.rgba[:] = marker["rgba"]
-                g.label = marker["label"]
+
+                # Handle label conversion if needed
+                if isinstance(marker["label"], bytes):
+                    g.label = marker["label"]
+                else:
+                    g.label = str(marker["label"]).encode("utf-8") if marker["label"] else b""
 
                 # Set other rendering properties
                 g.dataid = -1
@@ -205,11 +222,24 @@ class MujocoViewerHandler:
                 g.specular = 0.5
                 g.shininess = 0.5
 
-                self.handle._user_scn.ngeom += 1
+                # Increment the geom count
+                scene.ngeom += 1
 
     def sync(self) -> None:
         """Sync the viewer with current state."""
         self.handle.sync()
+
+    def get_camera(self) -> mujoco.MjvCamera:
+        """Get a camera instance configured with current settings."""
+        camera = mujoco.MjvCamera()
+        camera.type = self.handle.cam.type
+        camera.fixedcamid = self.handle.cam.fixedcamid
+        camera.trackbodyid = self.handle.cam.trackbodyid
+        camera.lookat[:] = self.handle.cam.lookat
+        camera.distance = self.handle.cam.distance
+        camera.azimuth = self.handle.cam.azimuth
+        camera.elevation = self.handle.cam.elevation
+        return camera
 
     def read_pixels(self) -> np.ndarray:
         """Read the current viewport pixels as a numpy array."""
@@ -229,46 +259,13 @@ class MujocoViewerHandler:
             self._renderer = mujoco.Renderer(model, height=self._render_height, width=self._render_width)
 
         # Get the current camera settings from the viewer
-        camera = mujoco.MjvCamera()
-        camera.type = self.handle.cam.type
-        camera.fixedcamid = self.handle.cam.fixedcamid
-        camera.trackbodyid = self.handle.cam.trackbodyid
-        camera.lookat[:] = self.handle.cam.lookat
-        camera.distance = self.handle.cam.distance
-        camera.azimuth = self.handle.cam.azimuth
-        camera.elevation = self.handle.cam.elevation
+        camera = self.get_camera()
 
         # Update the scene with the current physics state
         self._renderer.update_scene(data, camera=camera)
 
-        # Add markers to the scene manually through the scene object
-        scene = self._renderer.scene
-        for marker in self._markers:
-            if scene.ngeom < scene.maxgeom:
-                g = scene.geoms[scene.ngeom]
-
-                # Set marker properties
-                g.type = marker["type"]
-                g.size[:] = marker["size"]
-                g.pos[:] = marker["pos"]
-                g.mat[:] = marker["mat"]
-                g.rgba[:] = marker["rgba"]
-
-                # Convert label if needed
-                if isinstance(marker["label"], bytes):
-                    label = marker["label"]
-                else:
-                    label = str(marker["label"]).encode("utf-8") if marker["label"] else b""
-                g.label = label
-
-                # Set additional properties
-                g.dataid = -1
-                g.objtype = mujoco.mjtObj.mjOBJ_UNKNOWN
-                g.objid = -1
-                g.category = mujoco.mjtCatBit.mjCAT_DECOR
-
-                # Increment the geom count
-                scene.ngeom += 1
+        # Add markers to the scene manually
+        self._apply_markers_to_scene(self._renderer.scene)
 
         # Render the scene
         pixels = self._renderer.render()
@@ -283,12 +280,15 @@ class MujocoViewerHandler:
 
 
 class MujocoViewerHandlerContext:
-    def __init__(self, handle: mujoco.viewer.Handle, capture_pixels: bool = False) -> None:
+    def __init__(
+        self, handle: mujoco.viewer.Handle, capture_pixels: bool = False, save_path: str | Path | None = None
+    ) -> None:
         self.handle = handle
         self.capture_pixels = capture_pixels
+        self.save_path = save_path
 
     def __enter__(self) -> MujocoViewerHandler:
-        return MujocoViewerHandler(self.handle, capture_pixels=self.capture_pixels)
+        return MujocoViewerHandler(self.handle, capture_pixels=self.capture_pixels, save_path=self.save_path)
 
     def __exit__(
         self, exc_type: Optional[type], exc_value: Optional[Exception], traceback: Optional[TracebackType]
@@ -302,11 +302,12 @@ def launch_passive(
     show_left_ui: bool = False,
     show_right_ui: bool = False,
     capture_pixels: bool = False,
+    save_path: str | Path | None = None,
     **kwargs: object,
 ) -> MujocoViewerHandlerContext:
     """Drop-in replacement for viewer.launch_passive."""
     handle = mujoco.viewer.launch_passive(model, data, show_left_ui=show_left_ui, show_right_ui=show_right_ui, **kwargs)
-    return MujocoViewerHandlerContext(handle, capture_pixels=capture_pixels)
+    return MujocoViewerHandlerContext(handle, capture_pixels=capture_pixels, save_path=save_path)
 
 
 def rotation_matrix_from_direction(direction: np.ndarray, reference: np.ndarray = np.array([0, 0, 1])) -> np.ndarray:
