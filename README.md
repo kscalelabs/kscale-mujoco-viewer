@@ -7,12 +7,17 @@ Originally referenced from [mujoco-python-viewer](https://github.com/gaolongsen/
 ## Installation
 
 ```bash
-pip install kscale-mujoco-viewer
+pip install kmv
 ```
 
 ## Usage
 
 ```python
-import ksviewer
+from kmv.viewer import launch_passive
+
+with launch_passive(viewer_model, viewer_data) as viewer:
+    while doing_stuff:
+        # do stuff
+        viewer.update_and_sync()
 ```
 
