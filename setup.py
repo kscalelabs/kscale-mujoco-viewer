@@ -28,7 +28,7 @@ setup(
     name="kmv",
     version=version,
     description="The kscale-mujoco-viewer project",
-    author="Wesley Maa",
+    author="Ali Kuwajerwala, Wesley Maa",
     url="https://github.com/kscalelabs/kscale-mujoco-viewer",
     long_description=long_description,
     long_description_content_type="text/markdown",
