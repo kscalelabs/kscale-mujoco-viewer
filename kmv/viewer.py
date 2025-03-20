@@ -7,6 +7,7 @@ from typing import Optional, Protocol, Union
 import mujoco
 import mujoco.viewer
 import numpy as np
+import PIL.Image
 
 
 class CameraConfig(Protocol):
@@ -17,6 +18,12 @@ class CameraConfig(Protocol):
     render_elevation: float
     render_lookat: list[float]
     render_track_body_id: Optional[int] = None
+
+
+class UserConfig(Protocol):
+    """Protocol for user configuration."""
+
+    ctrl_dt: float
 
 
 class CommandValue(Protocol):
@@ -36,6 +43,7 @@ class MujocoViewerHandler:
         handle: mujoco.viewer.Handle,
         capture_pixels: bool = False,
         save_path: str | Path | None = None,
+        config: UserConfig | None = None,
         render_width: int = 640,
         render_height: int = 480,
     ) -> None:
@@ -48,7 +56,7 @@ class MujocoViewerHandler:
         self._render_width = render_width
         self._render_height = render_height
         self._renderer = None
-
+        self._config = config
         # If we're going to capture pixels, initialize the renderer now
         if self._capture_pixels and self.handle.m is not None:
             self._renderer = mujoco.Renderer(self.handle.m, width=render_width, height=render_height)
@@ -102,7 +110,6 @@ class MujocoViewerHandler:
 
     def add_commands(self, commands: dict[str, object]) -> None:
         """Add visual representations of commands to the scene."""
-        # Handle linear velocity command
         if "linear_velocity_command" in commands:
             command_vel = commands["linear_velocity_command"]
 
@@ -269,30 +276,116 @@ class MujocoViewerHandler:
 
         # Render the scene
         pixels = self._renderer.render()
-
         return pixels
+
+    def save_video(self, save_path: Optional[str | Path] = None, fps: int = 30) -> None:
+        """Save captured frames as video (MP4) or GIF.
+
+        Args:
+            save_path: Path to save the video. If None, uses self._save_path.
+            fps: Frames per second for the video.
+
+        Raises:
+            ValueError: If no frames to save or unsupported file extension.
+            RuntimeError: If issues with saving video, especially MP4 format issues.
+        """
+        # Use provided path or default
+        path = Path(save_path) if save_path is not None else self._save_path
+
+        if path is None:
+            return
+
+        if len(self._frames) == 0:
+            raise ValueError("No frames to save")
+
+        match path.suffix.lower():
+            case ".mp4":
+                try:
+                    import imageio.v2 as imageio
+                except ImportError:
+                    raise RuntimeError(
+                        "Failed to save video - note that saving .mp4 videos with imageio usually "
+                        "requires the FFMPEG backend, which can be installed using `pip install "
+                        "'imageio[ffmpeg]'`. Note that this also requires FFMPEG to be installed in "
+                        "your system."
+                    )
+
+                try:
+                    with imageio.get_writer(path, mode="I", fps=fps) as writer:
+                        for frame in self._frames:
+                            writer.append_data(frame)  # type: ignore[attr-defined]
+                except Exception as e:
+                    raise RuntimeError(
+                        "Failed to save video - note that saving .mp4 videos with imageio usually "
+                        "requires the FFMPEG backend, which can be installed using `pip install "
+                        "'imageio[ffmpeg]'`. Note that this also requires FFMPEG to be installed in "
+                        "your system."
+                    ) from e
+
+            case ".gif":
+                images = [PIL.Image.fromarray(frame) for frame in self._frames]
+                images[0].save(
+                    path,
+                    save_all=True,
+                    append_images=images[1:],
+                    duration=int(1000 / fps),
+                    loop=0,
+                )
+
+            case _:
+                raise ValueError(f"Unsupported file extension: {path.suffix}. Expected .mp4 or .gif")
 
     def update_and_sync(self) -> None:
         """Update the marks, sync with viewer, and clear the markers."""
         self._update_scene_markers()
         self.sync()
+        if self._save_path is not None:
+            self._frames.append(self.read_pixels())
         self.clear_markers()
 
 
 class MujocoViewerHandlerContext:
     def __init__(
-        self, handle: mujoco.viewer.Handle, capture_pixels: bool = False, save_path: str | Path | None = None
+        self,
+        handle: mujoco.viewer.Handle,
+        capture_pixels: bool = False,
+        save_path: str | Path | None = None,
+        render_width: int = 640,
+        render_height: int = 480,
+        fps: int = 30,
+        config: UserConfig | None = None,
     ) -> None:
         self.handle = handle
         self.capture_pixels = capture_pixels
         self.save_path = save_path
+        self.render_width = render_width
+        self.render_height = render_height
+        self.fps = fps
+        self.config = config
+        self.handler: Optional[MujocoViewerHandler] = None  # Properly typed
 
     def __enter__(self) -> MujocoViewerHandler:
-        return MujocoViewerHandler(self.handle, capture_pixels=self.capture_pixels, save_path=self.save_path)
+        self.handler = MujocoViewerHandler(
+            self.handle,
+            capture_pixels=self.capture_pixels,
+            save_path=self.save_path,
+            render_width=self.render_width,
+            render_height=self.render_height,
+            config=self.config,
+        )
+        return self.handler
 
     def __exit__(
         self, exc_type: Optional[type], exc_value: Optional[Exception], traceback: Optional[TracebackType]
     ) -> None:
+        # If we have a handler and a save path, save the video before closing
+        if self.handler is not None and self.save_path is not None:
+            fps = self.fps
+            if self.config is not None:
+                fps = round(1 / self.config.ctrl_dt)
+            self.handler.save_video(self.save_path, fps=fps)
+
+        # Always close the handle
         self.handle.close()
 
 
@@ -303,11 +396,40 @@ def launch_passive(
     show_right_ui: bool = False,
     capture_pixels: bool = False,
     save_path: str | Path | None = None,
+    render_width: int = 640,
+    render_height: int = 480,
+    fps: int = 30,
+    config: UserConfig | None = None,
     **kwargs: object,
 ) -> MujocoViewerHandlerContext:
-    """Drop-in replacement for viewer.launch_passive."""
+    """Drop-in replacement for viewer.launch_passive.
+
+    Args:
+        model: The MjModel to render
+        data: The MjData to render
+        show_left_ui: Whether to show the left UI panel
+        show_right_ui: Whether to show the right UI panel
+        capture_pixels: Whether to capture pixels for video saving
+        save_path: Where to save the video (MP4 or GIF)
+        render_width: Width of the rendering window
+        render_height: Height of the rendering window
+        fps: Frames per second for saved video
+        config: User configuration
+        **kwargs: Additional arguments to pass to mujoco.viewer.launch_passive
+
+    Returns:
+        A context manager that handles the MujocoViewer lifecycle
+    """
     handle = mujoco.viewer.launch_passive(model, data, show_left_ui=show_left_ui, show_right_ui=show_right_ui, **kwargs)
-    return MujocoViewerHandlerContext(handle, capture_pixels=capture_pixels, save_path=save_path)
+    return MujocoViewerHandlerContext(
+        handle,
+        capture_pixels=capture_pixels,
+        save_path=save_path,
+        render_width=render_width,
+        render_height=render_height,
+        fps=fps,
+        config=config,
+    )
 
 
 def rotation_matrix_from_direction(direction: np.ndarray, reference: np.ndarray = np.array([0, 0, 1])) -> np.ndarray:
