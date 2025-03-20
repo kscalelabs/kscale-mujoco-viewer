@@ -17,7 +17,6 @@ class MujocoViewer(Callbacks):
         self,
         model: mujoco.MjModel,
         data: mujoco.MjData,
-        panel_num: int,
         mode: str = "window",
         title: str = "mujoco-python-viewer",
         width: int | None = None,
@@ -25,6 +24,7 @@ class MujocoViewer(Callbacks):
         window_start_x_pixel_offset: int = 6,
         window_start_y_pixel_offset: int = 30,
         hide_menus: bool = False,
+        panel_num: int = 0,
     ) -> None:
         super().__init__(hide_menus)
         if hide_menus:
@@ -761,18 +761,9 @@ class MujocoViewer(Callbacks):
         :param action: GLFW_PRESS, GLFW_RELEASE or GLFW_REPEAT.
         :param mods: Bit field describing which modifier keys were held down.
         """
-        if action == glfw.PRESS:
-            if key == glfw.KEY_SPACE:
-                self._paused = not self._paused
-                state = "paused" if self._paused else "running"
-                print(f"Simulation {state}.")
-            elif key == glfw.KEY_ESCAPE:
-                self.close()
-            # Add other key handlers as needed
-            elif key == glfw.KEY_TAB:
-                # Example: Switch camera
-                self.switch_camera()
-            # Implement other key functionalities as needed
+        # Call the parent class key callback to handle all keys properly
+        super()._key_callback(window, key, scancode, action, mods)
+        # Add any additional MujocoViewer-specific key handling here if needed
 
     def switch_camera(self) -> None:
         """Switch to the next available camera."""
