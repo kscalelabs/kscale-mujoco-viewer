@@ -2,59 +2,16 @@
 
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Optional, Protocol, Sequence, TypeVar, Union, cast
+from typing import Optional, Sequence, Union
 
 import mujoco
 import mujoco.viewer
 import numpy as np
-import PIL.Image
+from omegaconf import DictConfig
 
-if TYPE_CHECKING:
-    from omegaconf import DictConfig
-
-
-class CommandValue(Protocol):
-    """Protocol for command values."""
-
-    @property
-    def shape(self) -> tuple[int, ...]: ...
-
-    def __len__(self) -> int: ...
-
-    def __getitem__(self, idx: int) -> float: ...
-
-
-# Define T as TypeVar that allows None to handle Optional values properly
-T = TypeVar("T", bound=Optional[object])
-
-
-def get_config_value(
-    config: "DictConfig | dict[str, object] | None", key: str, default: Optional[T] = None
-) -> Optional[T]:
-    """Get a value from config object regardless of its actual type.
-
-    Tries attribute access first (for DictConfig), then falls back to dictionary access.
-
-    Args:
-        config: The configuration object
-        key: The key to access
-        default: Default value to return if key is not found
-
-    Returns:
-        The value at the given key or the default
-    """
-    if config is None:
-        return default
-
-    try:
-        # Cast the result to match the expected return type
-        return cast(Optional[T], getattr(config, key))
-    except AttributeError:
-        try:
-            # Cast the result to match the expected return type
-            return cast(Optional[T], config[key])
-        except (KeyError, TypeError):
-            return default
+from kmv.utils.saving import save_video
+from kmv.utils.transforms import rotation_matrix_from_direction
+from kmv.utils.types import get_config_value
 
 
 class MujocoViewerHandler:
@@ -305,63 +262,6 @@ class MujocoViewerHandler:
         pixels = self._renderer.render()
         return pixels
 
-    def save_video(self, save_path: Optional[str | Path] = None, fps: int = 30) -> None:
-        """Save captured frames as video (MP4) or GIF.
-
-        Args:
-            save_path: Path to save the video. If None, uses self._save_path.
-            fps: Frames per second for the video.
-
-        Raises:
-            ValueError: If no frames to save or unsupported file extension.
-            RuntimeError: If issues with saving video, especially MP4 format issues.
-        """
-        # Use provided path or default
-        path = Path(save_path) if save_path is not None else self._save_path
-
-        if path is None:
-            return
-
-        if len(self._frames) == 0:
-            raise ValueError("No frames to save")
-
-        match path.suffix.lower():
-            case ".mp4":
-                try:
-                    import imageio.v2 as imageio
-                except ImportError:
-                    raise RuntimeError(
-                        "Failed to save video - note that saving .mp4 videos with imageio usually "
-                        "requires the FFMPEG backend, which can be installed using `pip install "
-                        "'imageio[ffmpeg]'`. Note that this also requires FFMPEG to be installed in "
-                        "your system."
-                    )
-
-                try:
-                    with imageio.get_writer(path, mode="I", fps=fps) as writer:
-                        for frame in self._frames:
-                            writer.append_data(frame)  # type: ignore[attr-defined]
-                except Exception as e:
-                    raise RuntimeError(
-                        "Failed to save video - note that saving .mp4 videos with imageio usually "
-                        "requires the FFMPEG backend, which can be installed using `pip install "
-                        "'imageio[ffmpeg]'`. Note that this also requires FFMPEG to be installed in "
-                        "your system."
-                    ) from e
-
-            case ".gif":
-                images = [PIL.Image.fromarray(frame) for frame in self._frames]
-                images[0].save(
-                    path,
-                    save_all=True,
-                    append_images=images[1:],
-                    duration=int(1000 / fps),
-                    loop=0,
-                )
-
-            case _:
-                raise ValueError(f"Unsupported file extension: {path.suffix}. Expected .mp4 or .gif")
-
     def update_and_sync(self) -> None:
         """Update the marks, sync with viewer, and clear the markers."""
         self._update_scene_markers()
@@ -414,7 +314,7 @@ class MujocoViewerHandlerContext:
             if ctrl_dt is not None:
                 fps = round(1 / float(ctrl_dt))
 
-            self.handler.save_video(self.save_path, fps=fps)
+            save_video(self.handler._frames, self.save_path, fps=fps)
 
         # Always close the handle
         self.handle.close()
@@ -460,71 +360,4 @@ def launch_passive(
         render_height=render_height,
         fps=fps,
         config=config,
-    )
-
-
-def rotation_matrix_from_direction(direction: np.ndarray, reference: np.ndarray = np.array([0, 0, 1])) -> np.ndarray:
-    """Compute a rotation matrix that aligns the reference vector with the direction vector."""
-    # Normalize direction vector
-    dir_vec = np.array(direction, dtype=float)
-    norm = np.linalg.norm(dir_vec)
-    if norm < 1e-10:  # Avoid division by zero
-        return np.eye(3)
-
-    dir_vec = dir_vec / norm
-
-    # Normalize reference vector
-    ref_vec = np.array(reference, dtype=float)
-    ref_vec = ref_vec / np.linalg.norm(ref_vec)
-
-    # Simple case: vectors are nearly aligned
-    if np.abs(np.dot(dir_vec, ref_vec) - 1.0) < 1e-10:
-        return np.eye(3)
-
-    # Simple case: vectors are nearly opposite
-    if np.abs(np.dot(dir_vec, ref_vec) + 1.0) < 1e-10:
-        # Flip around x-axis for [0,0,1] reference
-        if np.allclose(ref_vec, [0, 0, 1]):
-            return np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-        # General case
-        else:
-            # Find an axis perpendicular to the reference
-            perp = np.cross(ref_vec, [1, 0, 0])
-            if np.linalg.norm(perp) < 1e-10:
-                perp = np.cross(ref_vec, [0, 1, 0])
-            perp = perp / np.linalg.norm(perp)
-
-            # Rotate 180 degrees around this perpendicular axis
-            c = -1  # cos(π)
-            s = 0  # sin(π)
-            t = 1 - c
-            x, y, z = perp
-
-            return np.array(
-                [
-                    [t * x * x + c, t * x * y - z * s, t * x * z + y * s],
-                    [t * x * y + z * s, t * y * y + c, t * y * z - x * s],
-                    [t * x * z - y * s, t * y * z + x * s, t * z * z + c],
-                ]
-            )
-
-    # General case: use cross product to find rotation axis
-    axis = np.cross(ref_vec, dir_vec)
-    axis = axis / np.linalg.norm(axis)
-
-    # Angle between vectors
-    angle = np.arccos(np.clip(np.dot(ref_vec, dir_vec), -1.0, 1.0))
-
-    # Rodrigues rotation formula
-    c = np.cos(angle)
-    s = np.sin(angle)
-    t = 1 - c
-    x, y, z = axis
-
-    return np.array(
-        [
-            [t * x * x + c, t * x * y - z * s, t * x * z + y * s],
-            [t * x * y + z * s, t * y * y + c, t * y * z - x * s],
-            [t * x * z - y * s, t * y * z + x * s, t * z * z + c],
-        ]
     )
