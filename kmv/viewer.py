@@ -281,7 +281,7 @@ class MujocoViewerHandlerContext:
         self.capture_pixels = capture_pixels
         self.save_path = save_path
         self.config = config
-        self.handler: Optional[MujocoViewerHandler] = None  # Properly typed
+        self.handler: Optional[MujocoViewerHandler] = None
 
     def __enter__(self) -> MujocoViewerHandler:
         self.handler = MujocoViewerHandler(
