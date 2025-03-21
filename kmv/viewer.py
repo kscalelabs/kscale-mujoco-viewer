@@ -1,19 +1,19 @@
 """Utilities for rendering the environment."""
 
 import logging
-import traceback
 from pathlib import Path
 from types import TracebackType
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence, Tuple
 
 import mujoco
 import mujoco.viewer
 import numpy as np
 from omegaconf import DictConfig
 
+from kmv.utils.markers import TrackingConfig, TrackingMarker
 from kmv.utils.saving import save_video
 from kmv.utils.transforms import rotation_matrix_from_direction
-from kmv.utils.types import get_config_value
+from kmv.utils.types import CommandValue, ModelCache, get_config_value
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +27,14 @@ class MujocoViewerHandler:
         config: "DictConfig | dict[str, object] | None" = None,
     ) -> None:
         self.handle = handle
-        self._markers: list[dict[str, object]] = []
+        self._markers: list[TrackingMarker] = []
         self._frames: list[np.ndarray] = []
         self._capture_pixels = capture_pixels
         self._save_path = Path(save_path) if save_path is not None else None
         self._renderer = None
         self._config = config
-
+        self._model_cache = ModelCache.create(self.handle.m)
+        self._initial_z_offset: Optional[float] = None
         if (self._capture_pixels and self.handle.m is not None) or (self._save_path is not None):
             render_width = get_config_value(config, "render_width", 640)
             render_height = get_config_value(config, "render_height", 480)
@@ -74,115 +75,168 @@ class MujocoViewerHandler:
 
     def add_marker(
         self,
-        pos: Union[list[float], tuple[float, float, float], np.ndarray],
-        size: tuple[float, float, float] = (0.1, 0, 0),
-        rgba: tuple[float, float, float, float] = (1, 0, 0, 1),
-        type: int = mujoco.mjtGeom.mjGEOM_SPHERE,
-        mat: Optional[np.ndarray] = None,
-        label: str = "",
+        name: str,
+        pos: np.ndarray = np.zeros(3),
+        orientation: np.ndarray = np.eye(3),
+        color: np.ndarray = np.array([1, 0, 0, 1]),
+        scale: np.ndarray = np.array([0.1, 0.1, 0.1]),
+        label: str | None = None,
+        track_geom_name: str | None = None,
+        track_body_name: str | None = None,
+        track_x: bool = True,
+        track_y: bool = True,
+        track_z: bool = True,
+        track_rotation: bool = True,
+        tracking_offset: np.ndarray = np.array([0, 0, 0]),
+        geom: int = mujoco.mjtGeom.mjGEOM_SPHERE,
     ) -> None:
         """Add a marker to be rendered in the scene."""
+        target_name = "world"
+        target_type = "body"
+        if track_geom_name is not None:
+            target_name = track_geom_name
+            target_type = "geom"
+        elif track_body_name is not None:
+            target_name = track_body_name
+            target_type = "body"
+
+        tracking_cfg = TrackingConfig(
+            target_name=target_name,
+            target_type=target_type,
+            offset=tracking_offset,
+            track_x=track_x,
+            track_y=track_y,
+            track_z=track_z,
+            track_rotation=track_rotation,
+        )
         self._markers.append(
-            {
-                "pos": pos,
-                "size": size,
-                "rgba": rgba,
-                "type": type,
-                "mat": np.eye(3) if mat is None else mat,
-                "label": label if isinstance(label, bytes) else label.encode("utf8") if label else b"",
-            }
+            TrackingMarker(
+                name=name,
+                pos=pos,
+                orientation=orientation,
+                color=color,
+                scale=scale,
+                label=label,
+                geom=geom,
+                tracking_cfg=tracking_cfg,
+                model_cache=self._model_cache,
+            )
         )
 
-    def add_commands(self, commands: dict[str, object]) -> None:
-        """Add visual representations of commands to the scene."""
+    def add_commands(self, commands: dict[str, CommandValue]) -> None:
         if "linear_velocity_command" in commands:
             command_vel = commands["linear_velocity_command"]
-
-            # Check if it's array-like with indexable values and length
-            if (
-                hasattr(command_vel, "shape")
-                and hasattr(command_vel, "__len__")
-                and hasattr(command_vel, "__getitem__")
-                and len(command_vel) >= 2
-            ):
-                try:
-                    # Access values safely with type checking
-                    x_cmd = float(command_vel[0])
-                    y_cmd = float(command_vel[1])
-
-                    # Draw X velocity arrow (forward/backward)
-                    self.add_velocity_arrow(
-                        x_cmd,
-                        base_pos=(0, 0, 1.7),
-                        rgba=(1.0, 0.0, 0.0, 0.8),  # Red for X
-                        direction=[1.0, 0.0, 0.0],
-                        label=f"X Cmd: {x_cmd:.2f}",
-                    )
-
-                    # Draw Y velocity arrow (left/right)
-                    self.add_velocity_arrow(
-                        y_cmd,
-                        base_pos=(0, 0, 1.5),
-                        rgba=(0.0, 1.0, 0.0, 0.8),  # Green for Y
-                        direction=[0.0, 1.0, 0.0],
-                        label=f"Y Cmd: {y_cmd:.2f}",
-                    )
-                except (IndexError, TypeError, ValueError):
-                    logger.warning(
-                        "Failed to add velocity arrow for command %s with error traceback: %s",
-                        command_vel,
-                        traceback.format_exc(),
-                    )
+            if hasattr(command_vel, "shape") and hasattr(command_vel, "__len__") and len(command_vel) >= 2:
+                x_cmd = float(command_vel[0])
+                y_cmd = float(command_vel[1])
+                # Add separate velocity arrows for the x and y commands.
+                self.add_velocity_arrow(
+                    command_velocity=x_cmd,
+                    base_pos=(0, 0, 1.7),
+                    scale=0.1,
+                    rgba=(1.0, 0.0, 0.0, 0.8),
+                    direction=[1.0, 0.0, 0.0],
+                    label=f"X: {x_cmd:.2f}",
+                )
+                self.add_velocity_arrow(
+                    command_velocity=y_cmd,
+                    base_pos=(0, 0, 1.5),
+                    scale=0.1,
+                    rgba=(0.0, 1.0, 0.0, 0.8),
+                    direction=[0.0, 1.0, 0.0],
+                    label=f"Y: {y_cmd:.2f}",
+                )
 
     def add_velocity_arrow(
         self,
         command_velocity: float,
-        base_pos: tuple[float, float, float] = (0, 0, 1.7),
+        base_pos: Tuple[float, float, float] = (0, 0, 1.7),
         scale: float = 0.1,
-        rgba: tuple[float, float, float, float] = (0, 1.0, 0, 1.0),
+        rgba: Tuple[float, float, float, float] = (0, 1.0, 0, 1.0),
         direction: Optional[Sequence[float]] = None,
         label: Optional[str] = None,
     ) -> None:
-        """Add an arrow showing command velocity.
+        """Convenience method for adding a velocity arrow marker.
 
-        Args:
-            command_velocity: The velocity magnitude
-            base_pos: Position for the arrow base
-            scale: Scale factor for arrow length
-            rgba: Color of the arrow
-            direction: Optional direction vector [x,y,z]
-            label: Optional text label for the arrow
+        Assumes that velocity arrows track the torso geom (or base body) by default.
         """
-        # Default to x-axis if no direction provided
+        # Default to x-axis if direction not provided.
         if direction is None:
             direction = [1.0, 0.0, 0.0]
-
-        # For negative velocity, flip the direction
         if command_velocity < 0:
             direction = [-d for d in direction]
-
-        # Get rotation matrix for the direction
         mat = rotation_matrix_from_direction(np.array(direction))
-
-        # Scale the arrow length by the velocity magnitude
         length = abs(command_velocity) * scale
 
-        # Add the arrow marker
-        self.add_marker(
-            pos=base_pos,
-            mat=mat,
-            size=(0.02, 0.02, max(0.001, length)),
-            rgba=rgba,
-            type=mujoco.mjtGeom.mjGEOM_ARROW,
-            label=label if label is not None else f"Cmd: {command_velocity:.2f}",
+        # Use default tracking: track the torso geometry
+        tracking_cfg = TrackingConfig(
+            target_name="torso",  # default target name
+            target_type="geom",  # default target type
+            offset=np.array([0.0, 0.0, 0.5]),
+            track_x=True,
+            track_y=True,
+            track_z=False,  # typically velocity arrows are horizontal
+            track_rotation=False,
         )
+        marker = TrackingMarker(
+            name=label if label is not None else f"Vel: {command_velocity:.2f}",
+            pos=np.array(base_pos, dtype=float),
+            orientation=mat,
+            color=np.array(rgba, dtype=float),
+            scale=np.array((0.02, 0.02, max(0.001, length)), dtype=float),
+            label=label if label is not None else f"Vel: {command_velocity:.2f}",
+            geom=mujoco.mjtGeom.mjGEOM_ARROW,
+            tracking_cfg=tracking_cfg,
+            model_cache=self._model_cache,
+        )
+        self._markers.append(marker)
 
     def _update_scene_markers(self) -> None:
         """Add all current markers to the scene."""
         if self.handle._user_scn is None:
             return
 
+        # Update tracked markers with current positions
+        for marker in self._markers:
+            marker.update(self.handle.m, self.handle.d)
+
+        # Apply all markers to the scene
         self._apply_markers_to_scene(self.handle._user_scn)
+
+    def add_debug_markers(self) -> None:
+        """Add debug markers to the scene using the tracked marker system.
+
+        This adds a sphere at a fixed z height above the robot's base position,
+        but following the x,y position of the base.
+        """
+        if self.handle.d is None:
+            return
+
+        # Get the base position from qpos (first 3 values are xyz position)
+        base_pos = self.handle.d.qpos[:3].copy()
+
+        # On first call, establish the fixed z height (original z + 0.5)
+        if self._initial_z_offset is None:
+            self._initial_z_offset = base_pos[2] + 0.5
+            print(f"Set fixed z height to: {self._initial_z_offset}")
+
+        # Using the new marker system
+        self.add_marker(
+            name="debug_marker",
+            pos=np.array([base_pos[0], base_pos[1], self._initial_z_offset]),
+            scale=np.array([0.1, 0.1, 0.1]),  # Bigger sphere for visibility
+            color=np.array([1.0, 0.0, 1.0, 0.8]),  # Magenta color for visibility
+            label="Base Pos (fixed z)",
+            track_body_name="torso",  # Track the torso body
+            track_x=True,
+            track_y=True,
+            track_z=True,  # Don't track z, keep it fixed
+            tracking_offset=np.array([0, 0, 0.5]),  # Offset above the torso
+            geom=mujoco.mjtGeom.mjGEOM_ARROW,  # Specify the geom type
+        )
+
+        # Print position to console for debugging
+        print(f"Marker position: x,y=({base_pos[0]:.2f},{base_pos[1]:.2f}), fixed z={self._initial_z_offset:.2f}")
 
     def _apply_markers_to_scene(self, scene: mujoco.MjvScene) -> None:
         """Apply markers to the provided scene.
@@ -191,33 +245,7 @@ class MujocoViewerHandler:
             scene: The MjvScene to apply markers to
         """
         for marker in self._markers:
-            if scene.ngeom < scene.maxgeom:
-                g = scene.geoms[scene.ngeom]
-
-                # Set basic properties
-                g.type = marker["type"]
-                g.size[:] = marker["size"]
-                g.pos[:] = marker["pos"]
-                g.mat[:] = marker["mat"]
-                g.rgba[:] = marker["rgba"]
-
-                # Handle label conversion if needed
-                if isinstance(marker["label"], bytes):
-                    g.label = marker["label"]
-                else:
-                    g.label = str(marker["label"]).encode("utf-8") if marker["label"] else b""
-
-                # Set other rendering properties
-                g.dataid = -1
-                g.objtype = mujoco.mjtObj.mjOBJ_UNKNOWN
-                g.objid = -1
-                g.category = mujoco.mjtCatBit.mjCAT_DECOR
-                g.emission = 0
-                g.specular = 0.5
-                g.shininess = 0.5
-
-                # Increment the geom count
-                scene.ngeom += 1
+            marker.apply_to_scene(scene)
 
     def sync(self) -> None:
         """Sync the viewer with current state."""
@@ -269,6 +297,7 @@ class MujocoViewerHandler:
 
     def update_and_sync(self) -> None:
         """Update the marks, sync with viewer, and clear the markers."""
+        # self.add_debug_markers()
         self._update_scene_markers()
         self.sync()
         if self._save_path is not None:
