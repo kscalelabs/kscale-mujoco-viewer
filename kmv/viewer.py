@@ -8,12 +8,11 @@ from typing import Optional, Sequence, Tuple
 import mujoco
 import mujoco.viewer
 import numpy as np
-from omegaconf import DictConfig
 
 from kmv.utils.markers import TrackingConfig, TrackingMarker
 from kmv.utils.saving import save_video
 from kmv.utils.transforms import rotation_matrix_from_direction
-from kmv.utils.types import CommandValue, ModelCache, get_config_value
+from kmv.utils.types import CommandValue, ModelCache
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,8 @@ class MujocoViewerHandler:
         handle: mujoco.viewer.Handle,
         capture_pixels: bool = False,
         save_path: str | Path | None = None,
-        config: "DictConfig | dict[str, object] | None" = None,
+        render_width: int = 640,
+        render_height: int = 480,
     ) -> None:
         self.handle = handle
         self._markers: list[TrackingMarker] = []
@@ -32,29 +32,35 @@ class MujocoViewerHandler:
         self._capture_pixels = capture_pixels
         self._save_path = Path(save_path) if save_path is not None else None
         self._renderer = None
-        self._config = config
         self._model_cache = ModelCache.create(self.handle.m)
         self._initial_z_offset: Optional[float] = None
         if (self._capture_pixels and self.handle.m is not None) or (self._save_path is not None):
-            render_width = get_config_value(config, "render_width", 640)
-            render_height = get_config_value(config, "render_height", 480)
             self._renderer = mujoco.Renderer(self.handle.m, width=render_width, height=render_height)
 
-    def setup_camera(self, config: "DictConfig | dict[str, object]") -> None:
+    def setup_camera(
+        self,
+        render_distance: float = 5.0,
+        render_azimuth: float = 90.0,
+        render_elevation: float = -30.0,
+        render_lookat: list[float] = [0.0, 0.0, 0.5],
+        render_track_body_id: Optional[int] = None,
+    ) -> None:
         """Setup the camera with the given configuration.
 
         Args:
-            config: Configuration with render_distance, render_azimuth, render_elevation,
-                   render_lookat, and optionally render_track_body_id.
+            render_distance: Distance from the camera to the target
+            render_azimuth: Azimuth angle of the camera
+            render_elevation: Elevation angle of the camera
+            render_lookat: Lookat position of the camera
+            render_track_body_id: Body ID to track with the camera
         """
-        self.handle.cam.distance = get_config_value(config, "render_distance", 5.0)
-        self.handle.cam.azimuth = get_config_value(config, "render_azimuth", 90.0)
-        self.handle.cam.elevation = get_config_value(config, "render_elevation", -30.0)
-        self.handle.cam.lookat[:] = get_config_value(config, "render_lookat", [0.0, 0.0, 0.5])
+        self.handle.cam.distance = render_distance
+        self.handle.cam.azimuth = render_azimuth
+        self.handle.cam.elevation = render_elevation
+        self.handle.cam.lookat[:] = render_lookat
 
-        track_body_id: Optional[int] = get_config_value(config, "render_track_body_id")
-        if track_body_id is not None:
-            self.handle.cam.trackbodyid = track_body_id
+        if render_track_body_id is not None:
+            self.handle.cam.trackbodyid = render_track_body_id
             self.handle.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
 
     def copy_data(self, dst: mujoco.MjData, src: mujoco.MjData) -> None:
@@ -311,20 +317,27 @@ class MujocoViewerHandlerContext:
         handle: mujoco.viewer.Handle,
         capture_pixels: bool = False,
         save_path: str | Path | None = None,
-        config: "DictConfig | dict[str, object] | None" = None,
+        render_width: int = 640,
+        render_height: int = 480,
+        ctrl_dt: float | None = None,
     ) -> None:
         self.handle = handle
         self.capture_pixels = capture_pixels
         self.save_path = save_path
-        self.config = config
-        self.handler: Optional[MujocoViewerHandler] = None
+        self.handler: MujocoViewerHandler | None = None
+
+        # Options for the renderer.
+        self.render_width = render_width
+        self.render_height = render_height
+        self.ctrl_dt = ctrl_dt
 
     def __enter__(self) -> MujocoViewerHandler:
         self.handler = MujocoViewerHandler(
             self.handle,
             capture_pixels=self.capture_pixels,
             save_path=self.save_path,
-            config=self.config,
+            render_width=self.render_width,
+            render_height=self.render_height,
         )
         return self.handler
 
@@ -334,9 +347,8 @@ class MujocoViewerHandlerContext:
         # If we have a handler and a save path, save the video before closing
         if self.handler is not None and self.save_path is not None:
             fps = 30
-            ctrl_dt: Optional[float] = get_config_value(self.config, "ctrl_dt")
-            if ctrl_dt is not None:
-                fps = round(1 / float(ctrl_dt))
+            if self.ctrl_dt is not None:
+                fps = round(1 / float(self.ctrl_dt))
             save_video(self.handler._frames, self.save_path, fps=fps)
 
         # Always close the handle
@@ -350,8 +362,9 @@ def launch_passive(
     show_right_ui: bool = False,
     capture_pixels: bool = False,
     save_path: str | Path | None = None,
-    config: "DictConfig | dict[str, object] | None" = None,
-    **kwargs: object,
+    render_width: int = 640,
+    render_height: int = 480,
+    ctrl_dt: float | None = None,
 ) -> MujocoViewerHandlerContext:
     """Drop-in replacement for mujoco.viewer.launch_passive.
 
@@ -364,16 +377,23 @@ def launch_passive(
         show_right_ui: Whether to show the right UI panel
         capture_pixels: Whether to capture pixels for video saving
         save_path: Where to save the video (MP4 or GIF)
-        config: Configuration object (supports either DictConfig or standard dict)
-        **kwargs: Additional arguments to pass to mujoco.viewer.launch_passive
+        render_width: The width of the rendered image
+        render_height: The height of the rendered image
+        ctrl_dt: The control time step (used to calculate fps)
 
     Returns:
         A context manager that handles the MujocoViewer lifecycle
     """
-    handle = mujoco.viewer.launch_passive(model, data, show_left_ui=show_left_ui, show_right_ui=show_right_ui, **kwargs)
     return MujocoViewerHandlerContext(
-        handle,
+        mujoco.viewer.launch_passive(
+            model=model,
+            data=data,
+            show_left_ui=show_left_ui,
+            show_right_ui=show_right_ui,
+        ),
         capture_pixels=capture_pixels,
         save_path=save_path,
-        config=config,
+        render_width=render_width,
+        render_height=render_height,
+        ctrl_dt=ctrl_dt,
     )
