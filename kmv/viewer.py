@@ -52,15 +52,6 @@ class MujocoViewerHandler:
         if self._make_plots:
             # Create plotter with appropriate title
             self._plotter = Plotter(window_title="MuJoCo Robot Data Plots")
-
-            # Set up specific plots for robot data, organized in groups
-            self._plotter.add_plot(
-                "torso_height", y_label="Height", y_axis_min=0.0, y_axis_max=1.6, group="Body Heights"
-            )
-            self._plotter.add_plot(
-                "head_height", y_label="Height", y_axis_min=0.0, y_axis_max=1.6, group="Body Heights"
-            )
-
             self._plotter.start()
 
         if (self._capture_pixels and self.handle.m is not None) or (self._save_path is not None):
@@ -343,38 +334,18 @@ class MujocoViewerHandler:
         pixels = self._renderer.render()
         return pixels
 
-    def update_plots(self) -> None:
-        """Update the plotting window with data from the simulation."""
-        if not self._make_plots or self._plotter is None or self.handle.m is None or self.handle.d is None:
-            return
-
-        # Plot torso height
-        try:
-            # Use the mujoco_helpers function to get torso position
-            torso_pos, _ = get_body_pose_by_name(self.handle.m, self.handle.d, "torso")
-            head_pos, _ = get_body_pose_by_name(self.handle.m, self.handle.d, "head")
-            # Plot the z-coordinate (height)
-            torso_height = torso_pos[2]
-            self._plotter.update_plot("torso_height", self._total_current_sim_time, torso_height)
-            head_height = head_pos[2]
-            self._plotter.update_plot("head_height", self._total_current_sim_time, head_height)
-
-            # Occasionally log the value
-            if int(self._total_current_sim_time * 10) % 10 == 0:  # Every ~1s
-                print(f"Torso height: {torso_height:.3f} m at time {self._total_current_sim_time:.2f} s")
-        except Exception:
-            # If torso can't be found, log it but don't crash
-            pass
-
-    def update_and_sync(self) -> None:
-        """Update the marks, sync with viewer, and clear the markers."""
+    def update_time(self) -> None:
+        """Update the time of the viewer."""
         self._current_sim_time = self.handle.d.time
         if self._current_sim_time < self.prev_sim_time:
             self._total_sim_time_offset += self.prev_sim_time
         self._total_current_sim_time = self._current_sim_time + self._total_sim_time_offset
         self.prev_sim_time = self._current_sim_time
 
-        self.update_plots()
+    def update_and_sync(self) -> None:
+        """Update the marks, sync with viewer, and clear the markers."""
+        self.update_time()
+        self._plotter.update_axes()
         self._plotter.render_frame()
         # Update scene markers and sync with viewer
         self._update_scene_markers()

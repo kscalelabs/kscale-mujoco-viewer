@@ -89,11 +89,15 @@ class Plotter:
                 dpg.add_line_series([], [], label=plot_name, parent=f"y_axis_{plot_name}", tag=f"series_{plot_name}")
 
             with dpg.group(horizontal=True):
+                default_fit_y_axis = y_axis_min is None and y_axis_max is None
                 dpg.add_checkbox(
                     label="Auto-fit x-axis", tag=f"auto_fit_checkbox_x_axis_{plot_name}", default_value=True
                 )
                 dpg.add_checkbox(
-                    label="Auto-fit y-axis", tag=f"auto_fit_checkbox_y_axis_{plot_name}", default_value=True
+                    label="Manual limits y-axis", tag=f"manual_limits_checkbox_y_axis_{plot_name}", default_value=not default_fit_y_axis
+                )
+                dpg.add_checkbox(
+                    label="Auto-fit y-axis", tag=f"auto_fit_checkbox_y_axis_{plot_name}", default_value=default_fit_y_axis
                 )
 
         # Initialize empty data lists for the new plot.
@@ -101,7 +105,7 @@ class Plotter:
         self.plot_groups[group].append(plot_name)
         print(f"Added plot: {plot_name} to group: {group}")
 
-    def _update_axes(self, plot_name):
+    def _update_plot_axes(self, plot_name):
         """Update both x and y axis limits based on auto-fit settings.
 
         Args:
@@ -126,16 +130,21 @@ class Plotter:
 
         # Handle Y-axis
         if (
-            dpg.get_value(f"auto_fit_checkbox_y_axis_{plot_name}")
+            dpg.get_value(f"manual_limits_checkbox_y_axis_{plot_name}")
             and self.plots[plot_name].y_axis_min is not None
             and self.plots[plot_name].y_axis_max is not None
         ):
             dpg.set_axis_limits(
                 f"y_axis_{plot_name}", self.plots[plot_name].y_axis_min, self.plots[plot_name].y_axis_max
             )
-            # dpg.fit_axis_data(f"y_axis_{plot_name}")
+        elif dpg.get_value(f"auto_fit_checkbox_y_axis_{plot_name}"):
+            dpg.fit_axis_data(f"y_axis_{plot_name}")
         else:
             dpg.set_axis_limits_auto(f"y_axis_{plot_name}")
+
+    def update_axes(self):
+        for plot_name in self.plots:
+            self._update_plot_axes(plot_name)
 
     def update_plot(self, plot_name, x, y):
         if plot_name in self.plots:
@@ -147,7 +156,7 @@ class Plotter:
             )
 
             # Update both axis limits
-            self._update_axes(plot_name)
+            self._update_plot_axes(plot_name)
         else:
             print(f"Plot '{plot_name}' not found!")
 
