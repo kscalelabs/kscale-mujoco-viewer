@@ -1,6 +1,19 @@
 import dearpygui.dearpygui as dpg
 import random
 import numpy as np
+from attr import attrs, attrib
+
+class Plot:
+    def __init__(self, name: str, group_name: str, x_label: str, y_label: str, y_axis_min: float | None = None, y_axis_max: float | None = None):
+        self.name = name
+        self.group_name = group_name
+        self.series_tag = f"series_{name}"
+        self.x_label = x_label
+        self.y_label = y_label
+        self.y_axis_min = y_axis_min
+        self.y_axis_max = y_axis_max
+        self.x_data = []
+        self.y_data = []
 
 
 class Plotter:
@@ -65,25 +78,27 @@ class Plotter:
                     dpg.set_axis_limits_auto(f"y_axis_{plot_name}")
                 # Create an empty line series to be updated later.
                 dpg.add_line_series([], [], label=plot_name, parent=f"y_axis_{plot_name}", tag=f"series_{plot_name}")
-                
-            dpg.add_checkbox(label="Auto-fit x-axis limits", tag=f"auto_fit_checkbox_x_axis_{plot_name}", default_value=True)
+            
+            with dpg.group(horizontal=True):
+                dpg.add_checkbox(label="Auto-fit x-axis", tag=f"auto_fit_checkbox_x_axis_{plot_name}", default_value=True)
+                dpg.add_checkbox(label="Auto-fit y-axis", tag=f"auto_fit_checkbox_y_axis_{plot_name}", default_value=True)
 
         # Initialize empty data lists for the new plot.
-        self.plots[plot_name] = {"x_data": [], "y_data": [], "series_tag": f"series_{plot_name}", "group": group}
+        self.plots[plot_name] = Plot(plot_name, group, x_label, y_label, y_axis_min, y_axis_max)
         self.plot_groups[group].append(plot_name)
         print(f"Added plot: {plot_name} to group: {group}")
 
     def update_plot(self, plot_name, x, y):
         if plot_name in self.plots:
-            self.plots[plot_name]["x_data"].append(x)
-            self.plots[plot_name]["y_data"].append(y)
+            self.plots[plot_name].x_data.append(x)
+            self.plots[plot_name].y_data.append(y)
             # Update the corresponding line series.
             dpg.set_value(
-                self.plots[plot_name]["series_tag"],
-                [self.plots[plot_name]["x_data"], self.plots[plot_name]["y_data"]]
+                self.plots[plot_name].series_tag,
+                [self.plots[plot_name].x_data, self.plots[plot_name].y_data]
             )
             if dpg.get_value(f"auto_fit_checkbox_x_axis_{plot_name}"):
-                x_data = self.plots[plot_name]["x_data"]
+                x_data = self.plots[plot_name].x_data
                 # If we have fewer points than the window size, show all points
                 if len(x_data) <= self.visible_points:
                     dpg.fit_axis_data(f"x_axis_{plot_name}")
@@ -96,7 +111,13 @@ class Plotter:
                     dpg.set_axis_limits(f"x_axis_{plot_name}", x_min - margin, x_max + margin)
             else:
                 dpg.set_axis_limits_auto(f"x_axis_{plot_name}")
-            # dpg.set_axis_limits_auto(f"y_axis_{plot_name}")
+                
+            if dpg.get_value(f"auto_fit_checkbox_y_axis_{plot_name}"):
+                # dpg.set_axis_limits(f"y_axis_{plot_name}", self.plots[plot_name].y_axis_min, self.plots[plot_name].y_axis_max)
+                dpg.fit_axis_data(f"y_axis_{plot_name}")
+            else:
+                dpg.set_axis_limits_auto(f"y_axis_{plot_name}")
+            # Otherwise leave y-axis as it is
         else:
             print(f"Plot '{plot_name}' not found!")
 
