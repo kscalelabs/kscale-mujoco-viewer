@@ -1,6 +1,8 @@
+"""Plotting utilities for the MuJoCo viewer."""
+
 import dearpygui.dearpygui as dpg
 import numpy as np
-
+import itertools
 
 class Plot:
     def __init__(
@@ -123,7 +125,11 @@ class Plotter:
             dpg.set_axis_limits_auto(f"x_axis_{plot_name}")
 
         # Handle Y-axis
-        if dpg.get_value(f"auto_fit_checkbox_y_axis_{plot_name}"):
+        if (
+            dpg.get_value(f"auto_fit_checkbox_y_axis_{plot_name}")
+            and self.plots[plot_name].y_axis_min is not None
+            and self.plots[plot_name].y_axis_max is not None
+        ):
             dpg.set_axis_limits(
                 f"y_axis_{plot_name}", self.plots[plot_name].y_axis_min, self.plots[plot_name].y_axis_max
             )
@@ -176,9 +182,10 @@ if __name__ == "__main__":
 
     plotter.add_plot("torso_height", y_label="Height", group="Body")
     plotter.add_plot("head_height", y_label="Height", group="Body")
+    plotter.start()
 
     # Simulate data updates
-    for i in range(100):
+    for i in itertools.count():
         time_val = i * 0.1
         plotter.update_plot("joint1_position", time_val, np.sin(time_val))
         plotter.update_plot("joint1_velocity", time_val, np.cos(time_val))
@@ -188,4 +195,4 @@ if __name__ == "__main__":
         plotter.update_plot("head_height", time_val, 1.5 + 0.1 * np.sin(time_val))
         plotter.render_frame()
 
-    plotter.start()
+    plotter.close()
