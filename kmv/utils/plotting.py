@@ -1,4 +1,3 @@
-
 import dearpygui.dearpygui as dpg
 import numpy as np
 
@@ -100,6 +99,38 @@ class Plotter:
         self.plot_groups[group].append(plot_name)
         print(f"Added plot: {plot_name} to group: {group}")
 
+    def _update_axes(self, plot_name):
+        """Update both x and y axis limits based on auto-fit settings.
+
+        Args:
+            plot_name (str): Name of the plot
+        """
+        # Handle X-axis
+        if dpg.get_value(f"auto_fit_checkbox_x_axis_{plot_name}"):
+            x_data = self.plots[plot_name].x_data
+            if len(x_data) > self.visible_points:
+                # For x-axis with many points, show only most recent ones
+                x_min = x_data[-self.visible_points]
+                x_max = x_data[-1]
+                # Add a small margin (5% of range)
+                margin = (x_max - x_min) * 0.05
+                dpg.set_axis_limits(f"x_axis_{plot_name}", x_min - margin, x_max + margin)
+            else:
+                # Otherwise fit all data
+                dpg.fit_axis_data(f"x_axis_{plot_name}")
+        else:
+            # If auto-fit is disabled, make sure the axis isn't locked
+            dpg.set_axis_limits_auto(f"x_axis_{plot_name}")
+
+        # Handle Y-axis
+        if dpg.get_value(f"auto_fit_checkbox_y_axis_{plot_name}"):
+            dpg.set_axis_limits(
+                f"y_axis_{plot_name}", self.plots[plot_name].y_axis_min, self.plots[plot_name].y_axis_max
+            )
+            # dpg.fit_axis_data(f"y_axis_{plot_name}")
+        else:
+            dpg.set_axis_limits_auto(f"y_axis_{plot_name}")
+
     def update_plot(self, plot_name, x, y):
         if plot_name in self.plots:
             self.plots[plot_name].x_data.append(x)
@@ -108,27 +139,9 @@ class Plotter:
             dpg.set_value(
                 self.plots[plot_name].series_tag, [self.plots[plot_name].x_data, self.plots[plot_name].y_data]
             )
-            if dpg.get_value(f"auto_fit_checkbox_x_axis_{plot_name}"):
-                x_data = self.plots[plot_name].x_data
-                # If we have fewer points than the window size, show all points
-                if len(x_data) <= self.visible_points:
-                    dpg.fit_axis_data(f"x_axis_{plot_name}")
-                else:
-                    # Otherwise, show only the most recent points
-                    x_min = x_data[-self.visible_points]
-                    x_max = x_data[-1]
-                    # Add a small margin (5% of range)
-                    margin = (x_max - x_min) * 0.05
-                    dpg.set_axis_limits(f"x_axis_{plot_name}", x_min - margin, x_max + margin)
-            else:
-                dpg.set_axis_limits_auto(f"x_axis_{plot_name}")
 
-            if dpg.get_value(f"auto_fit_checkbox_y_axis_{plot_name}"):
-                # dpg.set_axis_limits(f"y_axis_{plot_name}", self.plots[plot_name].y_axis_min, self.plots[plot_name].y_axis_max)
-                dpg.fit_axis_data(f"y_axis_{plot_name}")
-            else:
-                dpg.set_axis_limits_auto(f"y_axis_{plot_name}")
-            # Otherwise leave y-axis as it is
+            # Update both axis limits
+            self._update_axes(plot_name)
         else:
             print(f"Plot '{plot_name}' not found!")
 
