@@ -4,15 +4,18 @@ import logging
 from pathlib import Path
 from types import TracebackType
 from typing import Optional, Sequence, Tuple
+import time
 
 import mujoco
 import mujoco.viewer
 import numpy as np
 
 from kmv.utils.markers import TrackingConfig, TrackingMarker
+from kmv.utils.plotting import Plotter
 from kmv.utils.saving import save_video
 from kmv.utils.transforms import rotation_matrix_from_direction
 from kmv.utils.types import CommandValue, ModelCache
+from kmv.utils.mujoco_helpers import get_body_pose_by_name
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,9 @@ class MujocoViewerHandler:
         save_path: str | Path | None = None,
         render_width: int = 640,
         render_height: int = 480,
+        make_plots: bool = False,
     ) -> None:
+        # breakpoint()
         self.handle = handle
         self._markers: list[TrackingMarker] = []
         self._frames: list[np.ndarray] = []
@@ -34,6 +39,40 @@ class MujocoViewerHandler:
         self._renderer = None
         self._model_cache = ModelCache.create(self.handle.m)
         self._initial_z_offset: Optional[float] = None
+        
+        self.current_sim_time = 0.0
+        self.prev_sim_time = 0.0
+        self._total_sim_time_offset = 0.0
+        self._total_current_sim_time = 0.0
+        
+        # Initialize real-time plots if requested
+        self._make_plots = make_plots
+        self._plotter = None
+        self._start_time = None
+        
+        if self._make_plots:
+            # Create plotter with appropriate title
+            self._plotter = Plotter(window_title=f"MuJoCo Robot Data Plots")
+            
+            # Set up specific plots for robot data, organized in groups
+            self._plotter.add_plot(
+                "torso_height",
+                y_label="Height",
+                y_axis_min=0.0,
+                y_axis_max=1.6,
+                group="Body Heights"
+            )
+            self._plotter.add_plot(
+                "head_height",
+                y_label="Height",
+                y_axis_min=0.0,
+                y_axis_max=1.6,
+                group="Body Heights"
+            )
+            
+            self._plotter.start()
+            
+        
         if (self._capture_pixels and self.handle.m is not None) or (self._save_path is not None):
             self._renderer = mujoco.Renderer(self.handle.m, width=render_width, height=render_height)
 
@@ -62,6 +101,13 @@ class MujocoViewerHandler:
         if render_track_body_id is not None:
             self.handle.cam.trackbodyid = render_track_body_id
             self.handle.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
+            
+    def add_plot_group(self, title: str, index_mapping: dict[str, int], y_axis_min: float | None = None, y_axis_max: float | None = None) -> None:
+        """Add a plot group to the viewer."""
+        self._plotter.add_plot_group(title, index_mapping, y_axis_min, y_axis_max)
+        
+    def update_plot_group(self, title: str, y_values: list[float]) -> None:
+        self._plotter.update_plot_group(title, self._total_current_sim_time, y_values)
 
     def copy_data(self, dst: mujoco.MjData, src: mujoco.MjData) -> None:
         """Copy the data from the source to the destination."""
@@ -301,15 +347,73 @@ class MujocoViewerHandler:
         pixels = self._renderer.render()
         return pixels
 
+    def update_plots(self) -> None:
+        """Update the plotting window with data from the simulation."""
+        if not self._make_plots or self._plotter is None or self.handle.m is None or self.handle.d is None:
+            return
+            
+        # Plot torso height
+        try:
+            # Use the mujoco_helpers function to get torso position
+            torso_pos, _ = get_body_pose_by_name(self.handle.m, self.handle.d, "torso")
+            head_pos, _ = get_body_pose_by_name(self.handle.m, self.handle.d, "head")
+            # Plot the z-coordinate (height)
+            torso_height = torso_pos[2]
+            self._plotter.update_plot("torso_height", self._total_current_sim_time, torso_height)
+            head_height = head_pos[2]
+            self._plotter.update_plot("head_height", self._total_current_sim_time, head_height)
+            
+            # Occasionally log the value
+            if int(self._total_current_sim_time * 10) % 10 == 0:  # Every ~1s
+                print(f"Torso height: {torso_height:.3f} m at time {self._total_current_sim_time:.2f} s")
+        except Exception as e:
+            # If torso can't be found, log it but don't crash
+            pass
+
     def update_and_sync(self) -> None:
         """Update the marks, sync with viewer, and clear the markers."""
-        # self.add_debug_markers()
+        self._current_sim_time = self.handle.d.time
+        if self._current_sim_time < self.prev_sim_time:
+            self._total_sim_time_offset += self.prev_sim_time
+        self._total_current_sim_time = self._current_sim_time + self._total_sim_time_offset
+        self.prev_sim_time = self._current_sim_time
+        
+        self.update_plots()
+        self._plotter.render_frame()
+        # Update scene markers and sync with viewer
         self._update_scene_markers()
         self.sync()
+        
+        # Capture frames if needed
         if self._save_path is not None:
             self._frames.append(self.read_pixels())
         self.clear_markers()
+    
+    def close(self) -> None:
+        """Close the plotting window if it's open."""
+        if self._make_plots and self._plotter is not None:
+            self._plotter.close()
+            print("Closed plotting window")
 
+    def add_plot(self, plot_name, y_label="Value", y_axis_min=0.0, y_axis_max=1.0, group=None):
+        """Add a new plot to the viewer with optional group assignment."""
+        if not self._make_plots or self._plotter is None:
+            return
+            
+        self._plotter.add_plot(
+            plot_name,
+            y_label=y_label,
+            y_axis_min=y_axis_min,
+            y_axis_max=y_axis_max,
+            group=group
+        )
+
+    def update_plot(self, plot_name, y_value):
+        """Update a plot with a new data point."""
+        if not self._make_plots or self._plotter is None:
+            return
+            
+        self._plotter.update_plot(plot_name, self._total_current_sim_time, y_value)
 
 class MujocoViewerHandlerContext:
     def __init__(
@@ -320,11 +424,13 @@ class MujocoViewerHandlerContext:
         render_width: int = 640,
         render_height: int = 480,
         ctrl_dt: float | None = None,
+        make_plots: bool = False,
     ) -> None:
         self.handle = handle
         self.capture_pixels = capture_pixels
         self.save_path = save_path
         self.handler: MujocoViewerHandler | None = None
+        self.make_plots = make_plots
 
         # Options for the renderer.
         self.render_width = render_width
@@ -338,6 +444,7 @@ class MujocoViewerHandlerContext:
             save_path=self.save_path,
             render_width=self.render_width,
             render_height=self.render_height,
+            make_plots=self.make_plots,
         )
         return self.handler
 
@@ -365,6 +472,7 @@ def launch_passive(
     render_width: int = 640,
     render_height: int = 480,
     ctrl_dt: float | None = None,
+    make_plots: bool = False,
 ) -> MujocoViewerHandlerContext:
     """Drop-in replacement for mujoco.viewer.launch_passive.
 
@@ -380,7 +488,7 @@ def launch_passive(
         render_width: The width of the rendered image
         render_height: The height of the rendered image
         ctrl_dt: The control time step (used to calculate fps)
-
+        make_plots: Whether to show a separate plotting window
     Returns:
         A context manager that handles the MujocoViewer lifecycle
     """
@@ -396,4 +504,5 @@ def launch_passive(
         render_width=render_width,
         render_height=render_height,
         ctrl_dt=ctrl_dt,
+        make_plots=make_plots,
     )
