@@ -3,13 +3,14 @@
 import logging
 from pathlib import Path
 from types import TracebackType
-from typing import Optional, Sequence, Tuple
+from typing import Sequence
 
 import mujoco
 import mujoco.viewer
 import numpy as np
 
 from kmv.utils.markers import TrackingConfig, TrackingMarker
+from kmv.utils.plotting import Plotter
 from kmv.utils.saving import save_video
 from kmv.utils.transforms import rotation_matrix_from_direction
 from kmv.utils.types import CommandValue, ModelCache
@@ -25,7 +26,9 @@ class MujocoViewerHandler:
         save_path: str | Path | None = None,
         render_width: int = 640,
         render_height: int = 480,
+        make_plots: bool = False,
     ) -> None:
+        # breakpoint()
         self.handle = handle
         self._markers: list[TrackingMarker] = []
         self._frames: list[np.ndarray] = []
@@ -33,7 +36,23 @@ class MujocoViewerHandler:
         self._save_path = Path(save_path) if save_path is not None else None
         self._renderer = None
         self._model_cache = ModelCache.create(self.handle.m)
-        self._initial_z_offset: Optional[float] = None
+        self._initial_z_offset: float | None = None
+
+        self.current_sim_time = 0.0
+        self.prev_sim_time = 0.0
+        self._total_sim_time_offset = 0.0
+        self._total_current_sim_time = 0.0
+
+        # Initialize real-time plots if requested
+        self._make_plots = make_plots
+        self._plotter = None
+        self._start_time = None
+
+        if self._make_plots:
+            # Create plotter with appropriate title
+            self._plotter = Plotter(window_title="MuJoCo Robot Data Plots")
+            self._plotter.start()
+
         if (self._capture_pixels and self.handle.m is not None) or (self._save_path is not None):
             self._renderer = mujoco.Renderer(self.handle.m, width=render_width, height=render_height)
 
@@ -43,7 +62,7 @@ class MujocoViewerHandler:
         render_azimuth: float = 90.0,
         render_elevation: float = -30.0,
         render_lookat: list[float] = [0.0, 0.0, 0.5],
-        render_track_body_id: Optional[int] = None,
+        render_track_body_id: int | None = None,
     ) -> None:
         """Setup the camera with the given configuration.
 
@@ -62,6 +81,24 @@ class MujocoViewerHandler:
         if render_track_body_id is not None:
             self.handle.cam.trackbodyid = render_track_body_id
             self.handle.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
+
+    def add_plot_group(
+        self,
+        title: str,
+        index_mapping: dict[int, str] | None = None,
+        y_axis_min: float | None = None,
+        y_axis_max: float | None = None,
+    ) -> None:
+        """Add a plot group to the viewer."""
+        if self._plotter is None:
+            raise ValueError("Plotter not initialized. Call `make_plots=True` when initializing the viewer.")
+        self._plotter.add_plot_group(title, index_mapping, y_axis_min, y_axis_max)
+
+    def update_plot_group(self, title: str, y_values: list[float]) -> None:
+        """Update a plot group with new data."""
+        if self._plotter is None:
+            raise ValueError("Plotter not initialized. Call `make_plots=True` when initializing the viewer.")
+        self._plotter.update_plot_group(title, self._total_current_sim_time, y_values)
 
     def copy_data(self, dst: mujoco.MjData, src: mujoco.MjData) -> None:
         """Copy the data from the source to the destination."""
@@ -156,11 +193,11 @@ class MujocoViewerHandler:
     def add_velocity_arrow(
         self,
         command_velocity: float,
-        base_pos: Tuple[float, float, float] = (0, 0, 1.7),
+        base_pos: tuple[float, float, float] = (0, 0, 1.7),
         scale: float = 0.1,
-        rgba: Tuple[float, float, float, float] = (0, 1.0, 0, 1.0),
-        direction: Optional[Sequence[float]] = None,
-        label: Optional[str] = None,
+        rgba: tuple[float, float, float, float] = (0, 1.0, 0, 1.0),
+        direction: Sequence[float] | None = None,
+        label: str | None = None,
     ) -> None:
         """Convenience method for adding a velocity arrow marker.
 
@@ -301,14 +338,55 @@ class MujocoViewerHandler:
         pixels = self._renderer.render()
         return pixels
 
+    def update_time(self) -> None:
+        """Update the time of the viewer."""
+        self._current_sim_time = self.handle.d.time
+        if self._current_sim_time < self.prev_sim_time:
+            self._total_sim_time_offset += self.prev_sim_time
+        self._total_current_sim_time = self._current_sim_time + self._total_sim_time_offset
+        self.prev_sim_time = self._current_sim_time
+
     def update_and_sync(self) -> None:
         """Update the marks, sync with viewer, and clear the markers."""
-        # self.add_debug_markers()
+        self.update_time()
+        if self._make_plots and self._plotter is not None:
+            self._plotter.update_axes()
+            self._plotter.render_frame()
+        # Update scene markers and sync with viewer
         self._update_scene_markers()
         self.sync()
+
+        # Capture frames if needed
         if self._save_path is not None:
             self._frames.append(self.read_pixels())
         self.clear_markers()
+
+    def close(self) -> None:
+        """Close the plotting window if it's open."""
+        if self._make_plots and self._plotter is not None:
+            self._plotter.close()
+            print("Closed plotting window")
+
+    def add_plot(
+        self,
+        plot_name: str,
+        y_label: str = "Value",
+        y_axis_min: float = 0.0,
+        y_axis_max: float = 1.0,
+        group: str | None = None,
+    ) -> None:
+        """Add a new plot to the viewer with optional group assignment."""
+        if not self._make_plots or self._plotter is None:
+            return
+
+        self._plotter.add_plot(plot_name, y_label=y_label, y_axis_min=y_axis_min, y_axis_max=y_axis_max, group=group)
+
+    def update_plot(self, plot_name: str, y_value: float) -> None:
+        """Update a plot with a new data point."""
+        if not self._make_plots or self._plotter is None:
+            return
+
+        self._plotter.update_plot(plot_name, self._total_current_sim_time, y_value)
 
 
 class MujocoViewerHandlerContext:
@@ -320,11 +398,13 @@ class MujocoViewerHandlerContext:
         render_width: int = 640,
         render_height: int = 480,
         ctrl_dt: float | None = None,
+        make_plots: bool = False,
     ) -> None:
         self.handle = handle
         self.capture_pixels = capture_pixels
         self.save_path = save_path
         self.handler: MujocoViewerHandler | None = None
+        self.make_plots = make_plots
 
         # Options for the renderer.
         self.render_width = render_width
@@ -338,12 +418,11 @@ class MujocoViewerHandlerContext:
             save_path=self.save_path,
             render_width=self.render_width,
             render_height=self.render_height,
+            make_plots=self.make_plots,
         )
         return self.handler
 
-    def __exit__(
-        self, exc_type: Optional[type], exc_value: Optional[Exception], traceback: Optional[TracebackType]
-    ) -> None:
+    def __exit__(self, exc_type: type | None, exc_value: Exception | None, traceback: TracebackType | None) -> None:
         # If we have a handler and a save path, save the video before closing
         if self.handler is not None and self.save_path is not None:
             fps = 30
@@ -365,6 +444,7 @@ def launch_passive(
     render_width: int = 640,
     render_height: int = 480,
     ctrl_dt: float | None = None,
+    make_plots: bool = False,
 ) -> MujocoViewerHandlerContext:
     """Drop-in replacement for mujoco.viewer.launch_passive.
 
@@ -380,7 +460,7 @@ def launch_passive(
         render_width: The width of the rendered image
         render_height: The height of the rendered image
         ctrl_dt: The control time step (used to calculate fps)
-
+        make_plots: Whether to show a separate plotting window
     Returns:
         A context manager that handles the MujocoViewer lifecycle
     """
@@ -396,4 +476,5 @@ def launch_passive(
         render_width=render_width,
         render_height=render_height,
         ctrl_dt=ctrl_dt,
+        make_plots=make_plots,
     )

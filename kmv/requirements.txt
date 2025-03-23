@@ -5,3 +5,4 @@ mujoco_mjx
 numpy
 omegaconf
 Pillow
+dearpygui
