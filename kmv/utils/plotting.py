@@ -15,7 +15,7 @@ class Plot:
         y_label: str,
         y_axis_min: float | None = None,
         y_axis_max: float | None = None,
-    ):
+    ) -> None:
         self.name = name
         self.group_name = group_name
         self.series_tag = f"series_{name}"
@@ -23,17 +23,17 @@ class Plot:
         self.y_label = y_label
         self.y_axis_min = y_axis_min
         self.y_axis_max = y_axis_max
-        self.x_data = []
-        self.y_data = []
+        self.x_data: list[float] = []
+        self.y_data: list[float] = []
 
 
 class Plotter:
-    def __init__(self, window_title="Plotter", window_width=1000, window_height=600):
-        self.plots = {}  # Dictionary to track plot data
-        self.plot_count = 0  # Counter for dynamic plots
-        self.visible_points = 200  # Number of recent points to show when auto-fitting
-        self.plot_groups = {}  # Dictionary to track plot groups
-        self.group_index_mappings = {}
+    def __init__(self, window_title: str = "Plotter", window_width: int = 1000, window_height: int = 600) -> None:
+        self.plots: dict[str, Plot] = {}  # Dictionary to track plot data
+        self.plot_count: int = 0  # Counter for dynamic plots
+        self.visible_points: int = 200  # Number of recent points to show when auto-fitting
+        self.plot_groups: dict[str, list[str]] = {}  # Dictionary to track plot groups
+        self.group_index_mappings: dict[str, dict[int, str]] = {}
 
         dpg.create_context()
         # Create a main window to hold all plots
@@ -45,15 +45,20 @@ class Plotter:
         dpg.setup_dearpygui()
         dpg.set_primary_window("main_window", True)
 
-    def add_plot_group(self, group_name, index_mapping=None, y_axis_min=None, y_axis_max=None):
+    def add_plot_group(
+        self,
+        group_name: str,
+        index_mapping: dict[int, str] | None = None,
+        y_axis_min: float | None = None,
+        y_axis_max: float | None = None,
+    ) -> str:
         """Add a new group (column) for plots."""
         if group_name in self.plot_groups:
-            return  # Group already exists
+            return group_name  # Group already exists
 
         # Create a vertical group (column) for this group's plots
         with dpg.group(parent="plot_columns", tag=f"group_column_{group_name}"):
             # Add a title for the group
-
             dpg.add_text(f"== {group_name.upper()} ==")
 
         self.plot_groups[group_name] = []
@@ -63,7 +68,15 @@ class Plotter:
                 self.add_plot(plot_name, group=group_name, y_axis_min=y_axis_min, y_axis_max=y_axis_max)
         return group_name
 
-    def add_plot(self, plot_name, x_label="Total Sim Time", y_label="y", y_axis_min=None, y_axis_max=None, group=None):
+    def add_plot(
+        self,
+        plot_name: str,
+        x_label: str = "Total Sim Time",
+        y_label: str = "y",
+        y_axis_min: float | None = None,
+        y_axis_max: float | None = None,
+        group: str | None = None,
+    ) -> None:
         """Add a new plot, optionally to a specific group."""
         # If no group specified, use default
         if group is None:
@@ -111,11 +124,11 @@ class Plotter:
         self.plot_groups[group].append(plot_name)
         print(f"Added plot: {plot_name} to group: {group}")
 
-    def _update_plot_axes(self, plot_name):
+    def _update_plot_axes(self, plot_name: str) -> None:
         """Update both x and y axis limits based on auto-fit settings.
 
         Args:
-            plot_name (str): Name of the plot
+            plot_name: Name of the plot
         """
         # Handle X-axis
         if dpg.get_value(f"auto_fit_checkbox_x_axis_{plot_name}"):
@@ -148,11 +161,11 @@ class Plotter:
         else:
             dpg.set_axis_limits_auto(f"y_axis_{plot_name}")
 
-    def update_axes(self):
+    def update_axes(self) -> None:
         for plot_name in self.plots:
             self._update_plot_axes(plot_name)
 
-    def update_plot(self, plot_name, x, y):
+    def update_plot(self, plot_name: str, x: float, y: float) -> None:
         if plot_name in self.plots:
             self.plots[plot_name].x_data.append(x)
             self.plots[plot_name].y_data.append(y)
@@ -166,7 +179,7 @@ class Plotter:
         else:
             print(f"Plot '{plot_name}' not found!")
 
-    def update_plot_group(self, group_name, x_value, y_values):
+    def update_plot_group(self, group_name: str, x_value: float, y_values: list[float]) -> None:
         if group_name in self.group_index_mappings:
             index_mapping = self.group_index_mappings[group_name]
             for i, y_value in enumerate(y_values):
@@ -174,13 +187,13 @@ class Plotter:
                 plot_name = index_mapping[i]
                 self.update_plot(plot_name, x_value, y_value)
 
-    def render_frame(self):
+    def render_frame(self) -> None:
         dpg.render_dearpygui_frame()
 
-    def start(self):
+    def start(self) -> None:
         dpg.show_viewport()
 
-    def close(self):
+    def close(self) -> None:
         dpg.destroy_context()
 
 

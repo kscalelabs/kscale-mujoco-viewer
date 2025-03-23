@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 from types import TracebackType
-from typing import Optional, Sequence, Tuple
+from typing import Sequence
 
 import mujoco
 import mujoco.viewer
@@ -36,7 +36,7 @@ class MujocoViewerHandler:
         self._save_path = Path(save_path) if save_path is not None else None
         self._renderer = None
         self._model_cache = ModelCache.create(self.handle.m)
-        self._initial_z_offset: Optional[float] = None
+        self._initial_z_offset: float | None = None
 
         self.current_sim_time = 0.0
         self.prev_sim_time = 0.0
@@ -62,7 +62,7 @@ class MujocoViewerHandler:
         render_azimuth: float = 90.0,
         render_elevation: float = -30.0,
         render_lookat: list[float] = [0.0, 0.0, 0.5],
-        render_track_body_id: Optional[int] = None,
+        render_track_body_id: int | None = None,
     ) -> None:
         """Setup the camera with the given configuration.
 
@@ -85,14 +85,19 @@ class MujocoViewerHandler:
     def add_plot_group(
         self,
         title: str,
-        index_mapping: dict[str, int],
+        index_mapping: dict[int, str] | None = None,
         y_axis_min: float | None = None,
         y_axis_max: float | None = None,
     ) -> None:
         """Add a plot group to the viewer."""
+        if self._plotter is None:
+            raise ValueError("Plotter not initialized. Call `make_plots=True` when initializing the viewer.")
         self._plotter.add_plot_group(title, index_mapping, y_axis_min, y_axis_max)
 
     def update_plot_group(self, title: str, y_values: list[float]) -> None:
+        """Update a plot group with new data."""
+        if self._plotter is None:
+            raise ValueError("Plotter not initialized. Call `make_plots=True` when initializing the viewer.")
         self._plotter.update_plot_group(title, self._total_current_sim_time, y_values)
 
     def copy_data(self, dst: mujoco.MjData, src: mujoco.MjData) -> None:
@@ -188,11 +193,11 @@ class MujocoViewerHandler:
     def add_velocity_arrow(
         self,
         command_velocity: float,
-        base_pos: Tuple[float, float, float] = (0, 0, 1.7),
+        base_pos: tuple[float, float, float] = (0, 0, 1.7),
         scale: float = 0.1,
-        rgba: Tuple[float, float, float, float] = (0, 1.0, 0, 1.0),
-        direction: Optional[Sequence[float]] = None,
-        label: Optional[str] = None,
+        rgba: tuple[float, float, float, float] = (0, 1.0, 0, 1.0),
+        direction: Sequence[float] | None = None,
+        label: str | None = None,
     ) -> None:
         """Convenience method for adding a velocity arrow marker.
 
@@ -344,8 +349,9 @@ class MujocoViewerHandler:
     def update_and_sync(self) -> None:
         """Update the marks, sync with viewer, and clear the markers."""
         self.update_time()
-        self._plotter.update_axes()
-        self._plotter.render_frame()
+        if self._make_plots and self._plotter is not None:
+            self._plotter.update_axes()
+            self._plotter.render_frame()
         # Update scene markers and sync with viewer
         self._update_scene_markers()
         self.sync()
@@ -361,14 +367,21 @@ class MujocoViewerHandler:
             self._plotter.close()
             print("Closed plotting window")
 
-    def add_plot(self, plot_name, y_label="Value", y_axis_min=0.0, y_axis_max=1.0, group=None):
+    def add_plot(
+        self,
+        plot_name: str,
+        y_label: str = "Value",
+        y_axis_min: float = 0.0,
+        y_axis_max: float = 1.0,
+        group: str | None = None,
+    ) -> None:
         """Add a new plot to the viewer with optional group assignment."""
         if not self._make_plots or self._plotter is None:
             return
 
         self._plotter.add_plot(plot_name, y_label=y_label, y_axis_min=y_axis_min, y_axis_max=y_axis_max, group=group)
 
-    def update_plot(self, plot_name, y_value):
+    def update_plot(self, plot_name: str, y_value: float) -> None:
         """Update a plot with a new data point."""
         if not self._make_plots or self._plotter is None:
             return
@@ -409,9 +422,7 @@ class MujocoViewerHandlerContext:
         )
         return self.handler
 
-    def __exit__(
-        self, exc_type: Optional[type], exc_value: Optional[Exception], traceback: Optional[TracebackType]
-    ) -> None:
+    def __exit__(self, exc_type: type | None, exc_value: Exception | None, traceback: TracebackType | None) -> None:
         # If we have a handler and a save path, save the video before closing
         if self.handler is not None and self.save_path is not None:
             fps = 30
