@@ -6,3 +6,4 @@ numpy
 omegaconf
 Pillow
 dearpygui
+pynput
