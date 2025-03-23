@@ -1,8 +1,10 @@
 """Plotting utilities for the MuJoCo viewer."""
 
+import itertools
+
 import dearpygui.dearpygui as dpg
 import numpy as np
-import itertools
+
 
 class Plot:
     def __init__(
@@ -94,10 +96,14 @@ class Plotter:
                     label="Auto-fit x-axis", tag=f"auto_fit_checkbox_x_axis_{plot_name}", default_value=True
                 )
                 dpg.add_checkbox(
-                    label="Manual limits y-axis", tag=f"manual_limits_checkbox_y_axis_{plot_name}", default_value=not default_fit_y_axis
+                    label="Manual limits y-axis",
+                    tag=f"manual_limits_checkbox_y_axis_{plot_name}",
+                    default_value=not default_fit_y_axis,
                 )
                 dpg.add_checkbox(
-                    label="Auto-fit y-axis", tag=f"auto_fit_checkbox_y_axis_{plot_name}", default_value=default_fit_y_axis
+                    label="Auto-fit y-axis",
+                    tag=f"auto_fit_checkbox_y_axis_{plot_name}",
+                    default_value=default_fit_y_axis,
                 )
 
         # Initialize empty data lists for the new plot.

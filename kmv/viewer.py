@@ -10,7 +10,6 @@ import mujoco.viewer
 import numpy as np
 
 from kmv.utils.markers import TrackingConfig, TrackingMarker
-from kmv.utils.mujoco_helpers import get_body_pose_by_name
 from kmv.utils.plotting import Plotter
 from kmv.utils.saving import save_video
 from kmv.utils.transforms import rotation_matrix_from_direction
