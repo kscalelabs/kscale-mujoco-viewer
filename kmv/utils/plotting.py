@@ -1,11 +1,14 @@
 """Plotting utilities for the MuJoCo viewer."""
 
 import itertools
+import logging
 import platform
 from typing import Callable, ParamSpec, TypeVar
 
 import dearpygui.dearpygui as dpg
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -150,7 +153,7 @@ class Plotter:
         # Initialize empty data lists for the new plot.
         self.plots[plot_name] = Plot(plot_name, group, x_label, y_label, y_axis_min, y_axis_max)
         self.plot_groups[group].append(plot_name)
-        print(f"Added plot: {plot_name} to group: {group}")
+        logger.info("Added plot: %s to group: %s", plot_name, group)
 
     def _update_plot_axes(self, plot_name: str) -> None:
         """Update both x and y axis limits based on auto-fit settings.
@@ -205,7 +208,7 @@ class Plotter:
             # Update both axis limits
             self._update_plot_axes(plot_name)
         else:
-            print(f"Plot '{plot_name}' not found!")
+            logger.error("Plot '%s' not found!", plot_name)
 
     def update_plot_group(self, group_name: str, x_value: float, y_values: list[float]) -> None:
         if group_name in self.group_index_mappings:
