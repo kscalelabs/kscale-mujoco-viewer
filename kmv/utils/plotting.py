@@ -1,9 +1,37 @@
 """Plotting utilities for the MuJoCo viewer."""
 
 import itertools
+import platform
+from typing import Callable, ParamSpec, TypeVar
 
 import dearpygui.dearpygui as dpg
 import numpy as np
+
+T = TypeVar("T")
+P = ParamSpec("P")
+
+
+def run_on_main_thread(func: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> None:
+    """Execute function on the main thread if on macOS, otherwise execute directly.
+
+    This is needed for DearPyGui operations on macOS, which must be performed on the main thread
+    to avoid crashes with SIGTRAP/trace trap related to thread assertions in Apple's frameworks.
+    """
+    if platform.system() == "Darwin":  # macOS
+        try:
+            from Foundation import NSThread
+
+            if not NSThread.isMainThread():
+                from PyObjCTools import AppHelper
+
+                # Use callAfter to schedule the function on the main thread
+                AppHelper.callAfter(func, *args, **kwargs)
+                return
+        except ImportError:
+            # Fall back to direct execution if PyObjC is not available
+            pass
+    # Direct execution for non-macOS or if PyObjC is not available
+    func(*args, **kwargs)
 
 
 class Plot:
@@ -188,13 +216,13 @@ class Plotter:
                 self.update_plot(plot_name, x_value, y_value)
 
     def render_frame(self) -> None:
-        dpg.render_dearpygui_frame()
+        run_on_main_thread(dpg.render_dearpygui_frame)
 
     def start(self) -> None:
-        dpg.show_viewport()
+        run_on_main_thread(dpg.show_viewport)
 
     def close(self) -> None:
-        dpg.destroy_context()
+        run_on_main_thread(dpg.destroy_context)
 
 
 if __name__ == "__main__":
