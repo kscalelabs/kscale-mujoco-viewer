@@ -35,6 +35,8 @@ namespace_packages = false
 module = [
     "mujoco.*",
     "dearpygui.*",
+    "Foundation.*",
+    "PyObjCTools.*",
 ]
 ignore_missing_imports = true
 
