@@ -2,8 +2,10 @@
 
 import logging
 import os
+import subprocess
+import tempfile
 from pathlib import Path
-from typing import Optional, Union, List
+from typing import Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -43,66 +45,51 @@ class StreamingVideoWriter:
         self.show_frame_number = show_frame_number
         self.show_sim_time = show_sim_time
         self.quality = quality
+        self.gif_quality = 10  # Always use maximum quality for GIFs
         
         # Create directory if it doesn't exist
         os.makedirs(self.save_path.parent, exist_ok=True)
         
-        # Set up the writer based on file extension
-        ext = self.save_path.suffix.lower()
+        # Set up file paths based on input
+        self.is_gif = self.save_path.suffix.lower() == ".gif"
         
-        if ext == ".mp4":
-            try:
-                import imageio.v2 as imageio
-            except ImportError:
-                raise RuntimeError(
-                    "Failed to initialize video writer - saving .mp4 videos requires "
-                    "imageio with FFMPEG backend, which can be installed using "
-                    "`pip install 'imageio[ffmpeg]'`. FFMPEG must also be installed."
-                )
-            
-            # Configure FFMPEG writer for MP4
-            # Calculate bitrate based on quality (higher quality = higher bitrate)
-            bitrate = None
-            if self.quality is not None:
-                bitrate = str(int(1000000 * (self.quality + 1) / 5))  # 200k-2.2M range
-            
-            # Use standard H.264 codec which works well across platforms
-            try:
-                self.writer = imageio.get_writer(
-                    self.save_path,
-                    format='FFMPEG',
-                    mode='I',
-                    fps=self.fps,
-                    codec='h264',  # H.264 is well-supported across platforms
-                    pixelformat='yuv420p',  # Standard pixel format for compatibility
-                    bitrate=bitrate,
-                    macro_block_size=16  # Ensures dimensions are compatible with codec
-                )
-                logger.info("Initialized MP4 writer with H.264 codec at %d FPS", fps)
-            except Exception as e:
-                raise RuntimeError(f"Failed to initialize MP4 writer: {e}")
-            
-        elif ext == ".gif":
-            try:
-                import imageio.v2 as imageio
-                self.writer = imageio.get_writer(
-                    self.save_path,
-                    format='GIF',
-                    mode='I',
-                    fps=self.fps,
-                    loop=0  # 0 means loop indefinitely
-                )
-                logger.info("Initialized GIF writer at %d FPS", fps)
-            except ImportError:
-                raise RuntimeError(
-                    "Failed to initialize GIF writer - saving GIFs requires imageio. "
-                    "Please install it using `pip install imageio`."
-                )
-            except Exception as e:
-                raise RuntimeError(f"Failed to initialize GIF writer: {e}")
-            
+        # If the target is GIF, we'll create an MP4 first and convert later
+        if self.is_gif:
+            self.temp_mp4_path = self.save_path.with_suffix('.temp.mp4')
+            self.writer_path = self.temp_mp4_path
         else:
-            raise ValueError(f"Unsupported file extension: {ext}. Expected .mp4 or .gif")
+            self.writer_path = self.save_path
+        
+        # Initialize MP4 writer
+        try:
+            import imageio.v2 as imageio
+        except ImportError:
+            raise RuntimeError(
+                "Failed to initialize video writer - saving videos requires "
+                "imageio with FFMPEG backend, which can be installed using "
+                "`pip install 'imageio[ffmpeg]'`. FFMPEG must also be installed."
+            )
+        
+        # Calculate bitrate based on quality (higher quality = higher bitrate)
+        bitrate = None
+        if self.quality is not None:
+            bitrate = str(int(1000000 * (self.quality + 1) / 5))  # 200k-2.2M range
+        
+        # Set up the writer with MP4 format
+        try:
+            self.writer = imageio.get_writer(
+                self.writer_path,
+                format='FFMPEG',
+                mode='I',
+                fps=self.fps,
+                codec='h264',  # H.264 is well-supported across platforms
+                pixelformat='yuv420p',  # Standard pixel format for compatibility
+                bitrate=bitrate,
+                macro_block_size=16  # Ensures dimensions are compatible with codec
+            )
+            logger.info(f"Initialized video writer for {self.save_path} (fps={fps})")
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize video writer: {e}")
     
     def _add_text_overlay(self, frame: np.ndarray, sim_time: float) -> np.ndarray:
         """Add text overlays to the frame.
@@ -180,11 +167,125 @@ class StreamingVideoWriter:
         
         # Log progress periodically
         if self.frame_count % 100 == 0:
-            logger.info("Captured %d frames", self.frame_count)
+            logger.info(f"Captured {self.frame_count} frames")
+    
+    def _convert_mp4_to_gif(self) -> None:
+        """Convert the temporary MP4 file to GIF format using ffmpeg with palette generation.
+        
+        This uses a two-step process:
+        1. Generate an optimized color palette from the video
+        2. Create the GIF using that palette for better quality and smaller file size
+        """
+        try:
+            # Check if MP4 file exists
+            mp4_path = str(self.temp_mp4_path)
+            if not os.path.exists(mp4_path):
+                logger.error(f"MP4 file does not exist at path: {mp4_path}")
+                return
+            
+            logger.info(f"MP4 file exists with size: {os.path.getsize(mp4_path)} bytes")
+            
+            # Use ffmpeg directly via subprocess for better quality and smaller file size
+            gif_path = str(self.save_path)
+            logger.info(f"Converting MP4 to GIF using ffmpeg with palette: {mp4_path} -> {gif_path}")
+            
+            # Create a temporary palette file
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_palette:
+                palette_path = temp_palette.name
+            
+            try:
+                # Using maximum quality settings for GIFs
+                # Colors: 256 colors for maximum quality
+                colors = 256
+                
+                # Width: 640px for highest quality
+                width = 640
+                
+                # FPS: Use original FPS for highest quality
+                gif_fps = self.fps
+                
+                # Dithering: Use sierra2_4a for highest quality
+                dither_method = "sierra2_4a"
+                
+                logger.info(f"GIF generation with high quality: colors={colors}, width={width}px, fps={gif_fps}, dither={dither_method}")
+                
+                # Step 1: Generate palette with custom color count
+                palette_cmd = [
+                    "ffmpeg",
+                    "-i", mp4_path,
+                    "-vf", f"fps={gif_fps},scale={width}:-1:flags=lanczos,palettegen=max_colors={colors}:stats_mode=diff",
+                    "-y",  # Overwrite output file if it exists
+                    palette_path
+                ]
+                
+                logger.info(f"Step 1: Running palette generation: {' '.join(palette_cmd)}")
+                palette_result = subprocess.run(palette_cmd, capture_output=True, text=True)
+                
+                if palette_result.returncode != 0:
+                    logger.error(f"Palette generation failed with code {palette_result.returncode}")
+                    logger.error(f"stdout: {palette_result.stdout}")
+                    logger.error(f"stderr: {palette_result.stderr}")
+                    logger.info(f"Keeping MP4 file at: {mp4_path} (GIF conversion failed)")
+                    return
+                    
+                logger.info("Palette generated successfully")
+                
+                # Step 2: Create GIF using the palette with custom dithering
+                gif_cmd = [
+                    "ffmpeg",
+                    "-i", mp4_path,
+                    "-i", palette_path,
+                    "-filter_complex", 
+                    f"fps={gif_fps},scale={width}:-1:flags=lanczos[x];[x][1:v]paletteuse=dither={dither_method}:diff_mode=rectangle",
+                    "-loop", "0",  # Loop infinitely
+                    "-y",  # Overwrite output file if it exists
+                    gif_path
+                ]
+                
+                logger.info(f"Step 2: Creating GIF with palette: {' '.join(gif_cmd)}")
+                gif_result = subprocess.run(gif_cmd, capture_output=True, text=True)
+                
+                if gif_result.returncode == 0:
+                    logger.info("GIF creation successful")
+                    # Check if GIF was created
+                    if os.path.exists(gif_path):
+                        logger.info(f"GIF file created successfully with size: {os.path.getsize(gif_path)} bytes")
+                    else:
+                        logger.error(f"Failed to create GIF file at: {gif_path}")
+                else:
+                    logger.error(f"GIF creation failed with code {gif_result.returncode}")
+                    logger.error(f"stdout: {gif_result.stdout}")
+                    logger.error(f"stderr: {gif_result.stderr}")
+                    logger.info(f"Keeping MP4 file at: {mp4_path} (GIF conversion failed)")
+                    return
+                    
+            finally:
+                # Clean up the palette file
+                if os.path.exists(palette_path):
+                    os.remove(palette_path)
+                    logger.info(f"Removed temporary palette file: {palette_path}")
+            
+            # Remove the temporary MP4 file if conversion succeeded
+            os.remove(mp4_path)
+            logger.info(f"Successfully converted to GIF: {gif_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to convert MP4 to GIF: {e}")
+            import traceback
+            logger.error(f"Exception traceback: {traceback.format_exc()}")
+            logger.info(f"MP4 file is still available at: {self.temp_mp4_path}")
     
     def close(self) -> None:
         """Close the video writer and finalize the video."""
         if hasattr(self, 'writer') and self.writer is not None:
+            logger.info(f"Closing StreamingVideoWriter with {self.frame_count} frames")
             self.writer.close()
-            logger.info("Saved video with %d frames to: %s", self.frame_count, self.save_path)
-            self.writer = None 
+            logger.info(f"Writer closed, video saved to: {self.writer_path}")
+            
+            # Convert to GIF if needed
+            if self.is_gif:
+                logger.info(f"Starting GIF conversion process for {self.temp_mp4_path}")
+                self._convert_mp4_to_gif()
+            
+            self.writer = None
+            logger.info("StreamingVideoWriter fully closed") 

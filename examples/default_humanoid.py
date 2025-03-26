@@ -22,7 +22,7 @@ from kmv.viewer import MujocoViewerHandler, launch_passive
 logger = logging.getLogger(__name__)
 
 # Constants
-DEFAULT_DURATION = 100.0  # seconds
+DEFAULT_DURATION = 5.0  # seconds
 DEFAULT_RENDER_WIDTH = 1280
 DEFAULT_RENDER_HEIGHT = 720
 CONTROL_DT = 0.02  # Control timestep (20ms)
@@ -81,6 +81,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--save-video", type=str, help="Path to save video (e.g., 'video.mp4')", default=None)
     parser.add_argument("--duration", type=float, help="Duration of simulation in seconds", default=DEFAULT_DURATION)
     parser.add_argument("--make-plots", action="store_true", help="Enable real-time plotting", default=True)
+    parser.add_argument("--hide-frame-number", action="store_true", help="Hide frame number in video", default=False)
+    parser.add_argument("--hide-sim-time", action="store_true", help="Hide simulation time in video", default=False)
+    parser.add_argument("--video-quality", type=int, help="Video quality (0-10)", default=8)
 
     return parser.parse_args()
 
@@ -273,7 +276,7 @@ def update_plots(viewer: MujocoViewerHandler, data: mujoco.MjData, com_pos: np.n
         com_pos: Center of mass position (x, y, z)
         com_vel: Center of mass velocity (x, y, z)
     """
-    # Update actuator command plots
+    # Update actuator command plots - parameter order should be group_name, y_values, x_value=None
     viewer.update_plot_group("Actuator Commands", data.ctrl.tolist())
 
     # Update joint position plots (first 6 joints)
@@ -312,6 +315,20 @@ def run_simulation(
     for step in range(total_steps):
         # If paused, only update the viewer and skip physics
         if controller.paused:
+            # Get current state for plots even when paused (to reflect manual interactions)
+            com_pos = data.qpos[:3].copy()
+            com_vel = data.qvel[:3].copy()
+            
+            # Refresh plot data to show manual interactions
+            if make_plots:
+                # Forward the model to ensure kinematics are up to date with any changes
+                mujoco.mj_forward(model, data)
+                update_plots(viewer, data, com_pos, com_vel)
+                
+            # Add markers for visualization
+            add_markers(viewer, com_pos, com_vel)
+            
+            # Update the viewer
             viewer.update_and_sync()
             time.sleep(0.01)  # Small delay to prevent high CPU usage when paused
             continue
@@ -335,6 +352,8 @@ def run_simulation(
 
         # Update plots with the current data if enabled
         if make_plots:
+            # Make sure we have up-to-date kinematics
+            mujoco.mj_forward(model, data)
             update_plots(viewer, data, com_pos, com_vel)
 
         # Update visualization
@@ -353,7 +372,7 @@ def print_simulation_info(duration: float, save_video: str | None, make_plots: b
         make_plots: Whether plots are enabled
     """
     logger.info("Running simulation for %s seconds with control timestep %ss", duration, CONTROL_DT)
-    logger.info("Video saving: %s", "Enabled" if save_video else "Disabled")
+    logger.info("Video saving: %s", "Enabled to " + save_video if save_video else "Disabled")
     logger.info("Plotting: %s", "Enabled" if make_plots else "Disabled")
     logger.info("Controls:")
     logger.info("  - Space: Pause/Resume simulation")
@@ -406,6 +425,17 @@ def main() -> None:
                 render_lookat=[0.0, 0.0, 1.0],
                 render_track_body_id=torso_id,  # Track the torso
             )
+            
+            # Configure video recording if enabled
+            if args.save_video is not None:
+                # Calculate FPS from control timestep
+                fps = round(1 / CONTROL_DT)
+                viewer.setup_video(
+                    show_frame_number=not args.hide_frame_number,
+                    show_sim_time=not args.hide_sim_time,
+                    video_quality=args.video_quality,
+                    fps=fps
+                )
 
             # Setup plots if enabled
             if args.make_plots:

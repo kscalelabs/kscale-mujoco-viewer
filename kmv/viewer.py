@@ -10,10 +10,11 @@ import mujoco.viewer
 import numpy as np
 
 from kmv.utils.markers import TrackingConfig, TrackingMarker
-from kmv.utils.plotting import Plotter
+from kmv.utils.plotting import Plotter, ThreadedPlotter
 from kmv.utils.saving import save_video
 from kmv.utils.transforms import rotation_matrix_from_direction
 from kmv.utils.types import CommandValue, ModelCache
+from kmv.utils.video_writer import StreamingVideoWriter
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class MujocoViewerHandler:
         self,
         handle: mujoco.viewer.Handle,
         capture_pixels: bool = False,
-        save_path: str | Path | None = None,
+        video_save_path: str | Path | None = None,
         render_width: int = 640,
         render_height: int = 480,
         make_plots: bool = False,
@@ -33,28 +34,105 @@ class MujocoViewerHandler:
         self._markers: list[TrackingMarker] = []
         self._frames: list[np.ndarray] = []
         self._capture_pixels = capture_pixels
-        self._save_path = Path(save_path) if save_path is not None else None
+        self._save_path = Path(video_save_path) if video_save_path is not None else None
         self._renderer = None
         self._model_cache = ModelCache.create(self.handle.m)
         self._initial_z_offset: float | None = None
-
+        self._video_writer: StreamingVideoWriter | None = None
+        
+        # Default video settings
+        self._show_frame_number = True
+        self._show_sim_time = True
+        self._video_quality = 8
+        self._fps = 30
+        
         self.current_sim_time = 0.0
         self.prev_sim_time = 0.0
         self._total_sim_time_offset = 0.0
         self._total_current_sim_time = 0.0
+        self._render_width = render_width
+        self._render_height = render_height
 
         # Initialize real-time plots if requested
         self._make_plots = make_plots
         self._plotter = None
         self._start_time = None
+        self._plot_names = set()
 
         if self._make_plots:
-            # Create plotter with appropriate title
-            self._plotter = Plotter(window_title="MuJoCo Robot Data Plots")
+            logger.info("Initializing threaded plotter")
+            # Create plotter with appropriate title in a separate thread
+            self._plotter = ThreadedPlotter(window_title="MuJoCo Robot Data Plots")
             self._plotter.start()
 
         if (self._capture_pixels and self.handle.m is not None) or (self._save_path is not None):
             self._renderer = mujoco.Renderer(self.handle.m, width=render_width, height=render_height)
+            
+            # Initialize video writer with default settings if save path is provided
+            if self._save_path is not None:
+                pass
+                self._init_video_writer()
+
+    def _init_video_writer(self) -> None:
+        """Initialize the video writer with current settings."""
+        if self._save_path is None:
+            return
+            
+        self._video_writer = StreamingVideoWriter(
+            save_path=self._save_path,
+            fps=self._fps,
+            frame_width=self._render_width,
+            frame_height=self._render_height,
+            show_frame_number=self._show_frame_number,
+            show_sim_time=self._show_sim_time,
+            quality=self._video_quality,
+        )
+        logger.info(f"Initialized video writer for {self._save_path}")
+
+    def setup_video(
+        self, 
+        show_frame_number: bool = True,
+        show_sim_time: bool = True,
+        video_quality: int = 8,
+        fps: int = 30,
+    ) -> None:
+        """Configure video recording options.
+        
+        Args:
+            show_frame_number: Whether to show frame numbers on the video
+            show_sim_time: Whether to show simulation time on the video
+            video_quality: Video quality setting (0-10)
+            fps: Frames per second for the video
+        """
+        # Only close existing writer if it has frames (avoid closing an unused writer)
+        if self._video_writer is not None:
+            if self._video_writer.frame_count > 0:
+                # If we've captured frames, close the writer
+                self._video_writer.close()
+                self._video_writer = None
+            else:
+                # If no frames captured yet, just update the writer settings
+                self._video_writer.show_frame_number = show_frame_number
+                self._video_writer.show_sim_time = show_sim_time
+                self._video_writer.fps = fps
+                self._video_writer.quality = video_quality
+                
+                # Update internal settings too
+                self._show_frame_number = show_frame_number
+                self._show_sim_time = show_sim_time
+                self._video_quality = video_quality
+                self._fps = fps
+                return
+        
+        # Update settings
+        self._show_frame_number = show_frame_number
+        self._show_sim_time = show_sim_time
+        self._video_quality = video_quality
+        self._fps = fps
+        
+        # Re-initialize the writer with new settings
+        if self._save_path is not None:
+            self._init_video_writer()
 
     def setup_camera(
         self,
@@ -94,11 +172,28 @@ class MujocoViewerHandler:
             raise ValueError("Plotter not initialized. Call `make_plots=True` when initializing the viewer.")
         self._plotter.add_plot_group(title, index_mapping, y_axis_min, y_axis_max)
 
-    def update_plot_group(self, title: str, y_values: list[float]) -> None:
-        """Update a plot group with new data."""
+    def update_plot_group(self, title: str, y_values: list[float], x_value: float = None) -> None:
+        """Update a plot group with new data.
+        
+        Args:
+            title: Name of the plot group
+            y_values: Y-axis values to update
+            x_value: X-axis value, defaults to current simulation time if None
+        """
         if self._plotter is None:
             raise ValueError("Plotter not initialized. Call `make_plots=True` when initializing the viewer.")
-        self._plotter.update_plot_group(title, self._total_current_sim_time, y_values)
+        
+        # Use current sim time if x is not provided
+        if x_value is None:
+            x_value = self._total_current_sim_time
+            
+        # Check if using ThreadedPlotter or regular Plotter and adapt parameter order
+        if isinstance(self._plotter, ThreadedPlotter):
+            # ThreadedPlotter's update_plot_group accepts (group_name, y_values, x_value)
+            self._plotter.update_plot_group(title, y_values, x_value)
+        else:
+            # Regular Plotter's update_plot_group accepts (group_name, x_value, y_values)
+            self._plotter.update_plot_group(title, x_value, y_values)
 
     def copy_data(self, dst: mujoco.MjData, src: mujoco.MjData) -> None:
         """Copy the data from the source to the destination."""
@@ -314,8 +409,8 @@ class MujocoViewerHandler:
                 "Renderer not initialized. "
                 "For off-screen rendering, initialize with `capture_pixels=True` or `save_path`"
             )
-        # Force a sync to ensure the current state is displayed
-        self.handle.sync()
+        # # Force a sync to ensure the current state is displayed
+        # self.handle.sync()
 
         # Get the current model and data from the handle
         model = self.handle.m
@@ -347,46 +442,107 @@ class MujocoViewerHandler:
         self.prev_sim_time = self._current_sim_time
 
     def update_and_sync(self) -> None:
-        """Update the marks, sync with viewer, and clear the markers."""
+        # Update simulation state
         self.update_time()
-        if self._make_plots and self._plotter is not None:
-            self._plotter.update_axes()
-            self._plotter.render_frame()
-        # Update scene markers and sync with viewer
-        self._update_scene_markers()
-        self.sync()
 
-        # Capture frames if needed
-        if self._save_path is not None:
-            self._frames.append(self.read_pixels())
+        # Ensure forward dynamics are calculated for accurate visualization
+        # This is critical for getting correct state when paused or during manual interactions
+        if self.handle.m is not None and self.handle.d is not None:
+            mujoco.mj_forward(self.handle.m, self.handle.d)
+
+        # Force update the scene with markers
+        self._update_scene_markers()
+
+        # If we're capturing, read pixels for video
+        if self._renderer is not None and self._video_writer is not None and self._save_path is not None:
+            pixels = self.read_pixels()
+            self._video_writer.add_frame(pixels, sim_time=self._total_current_sim_time)
+            
+
+
+        # We don't need to render the plotter frame here
+        # since it's running in its own thread
+        
+        # Ensure that the plotter is synchronized with current state
+        if self._make_plots and self._plotter is not None and isinstance(self._plotter, ThreadedPlotter):
+            flush_success = self._plotter.flush_updates(timeout=0.05)
+            if not flush_success:
+                logger.warning("Plotter updates not processed in time, plotting thread may be overloaded")
+
+        # Sync the mujoco viewer
+        self.sync()
+        
+        # Clear markers after syncing to avoid accumulation
         self.clear_markers()
 
     def close(self) -> None:
-        """Close the plotting window if it's open."""
-        if self._make_plots and self._plotter is not None:
+        """Close the viewer and release resources."""
+        if self._video_writer is not None:
+            self._video_writer.close()
+            self._video_writer = None
+            logger.info(f"Saved video to {self._save_path}")
+
+        if self._plotter is not None:
+            logger.info("Closing threaded plotter")
             self._plotter.close()
-            print("Closed plotting window")
+            self._plotter = None
 
     def add_plot(
         self,
         plot_name: str,
-        y_label: str = "Value",
-        y_axis_min: float = 0.0,
-        y_axis_max: float = 1.0,
+        x_label: str = "Total Sim Time",
+        y_label: str = "y",
+        y_axis_min: float | None = None,
+        y_axis_max: float | None = None,
         group: str | None = None,
     ) -> None:
-        """Add a new plot to the viewer with optional group assignment."""
+        """Add a plot to the viewer.
+
+        Args:
+            plot_name: Name of the plot
+            x_label: Label for the x-axis
+            y_label: Label for the y-axis
+            y_axis_min: Minimum y-axis value
+            y_axis_max: Maximum y-axis value
+            group: Group to add the plot to
+        """
         if not self._make_plots or self._plotter is None:
             return
+            
+        self._plotter.add_plot(
+            plot_name=plot_name,
+            x_label=x_label,
+            y_label=y_label,
+            y_axis_min=y_axis_min,
+            y_axis_max=y_axis_max,
+            group=group
+        )
+        
+        # Keep track of plot names
+        self._plot_names.add(plot_name)
+    
+    def update_plot(self, plot_name: str, y_value: float, x_value: float = None) -> None:
+        """Update a plot with new data.
 
-        self._plotter.add_plot(plot_name, y_label=y_label, y_axis_min=y_axis_min, y_axis_max=y_axis_max, group=group)
-
-    def update_plot(self, plot_name: str, y_value: float) -> None:
-        """Update a plot with a new data point."""
-        if not self._make_plots or self._plotter is None:
+        Args:
+            plot_name: Name of the plot
+            y_value: Y-axis value
+            x_value: X-axis value, defaults to current simulation time if None
+        """
+        if not self._make_plots or self._plotter is None or plot_name not in self._plot_names:
             return
-
-        self._plotter.update_plot(plot_name, self._total_current_sim_time, y_value)
+        
+        # Use current sim time if x is not provided
+        if x_value is None:
+            x_value = self._total_current_sim_time
+            
+        # Check if using ThreadedPlotter or regular Plotter and adapt parameter order
+        if isinstance(self._plotter, ThreadedPlotter):
+            # ThreadedPlotter's update_plot accepts (plot_name, y, x)
+            self._plotter.update_plot(plot_name, y_value, x_value)
+        else:
+            # Regular Plotter's update_plot accepts (plot_name, x, y)
+            self._plotter.update_plot(plot_name, x_value, y_value)
 
 
 class MujocoViewerHandlerContext:
@@ -415,23 +571,45 @@ class MujocoViewerHandlerContext:
         self.handler = MujocoViewerHandler(
             self.handle,
             capture_pixels=self.capture_pixels,
-            save_path=self.save_path,
+            video_save_path=self.save_path,
             render_width=self.render_width,
             render_height=self.render_height,
             make_plots=self.make_plots,
         )
+        
+        # Update fps if we have a control timestep
+        if self.handler._video_writer is not None and self.ctrl_dt is not None:
+            fps = round(1 / float(self.ctrl_dt))
+            self.handler.setup_video(fps=fps)
+            
         return self.handler
 
     def __exit__(self, exc_type: type | None, exc_value: Exception | None, traceback: TracebackType | None) -> None:
-        # If we have a handler and a save path, save the video before closing
-        if self.handler is not None and self.save_path is not None:
+        logger.info("MujocoViewerHandlerContext.__exit__ called")
+        
+        # Ensure handler is closed if it exists
+        if self.handler is not None:
+            logger.info("Closing handler in __exit__")
+            self.handler.close()
+        
+        # If we have a handler and a save path but no streaming writer was used,
+        # use the legacy approach to save the video
+        if (
+            self.handler is not None 
+            and self.save_path is not None 
+            and self.handler._video_writer is None 
+            and self.handler._frames
+        ):
             fps = 30
             if self.ctrl_dt is not None:
                 fps = round(1 / float(self.ctrl_dt))
+            logger.info(f"Using legacy video saving with {len(self.handler._frames)} frames")
             save_video(self.handler._frames, self.save_path, fps=fps)
 
         # Always close the handle
+        logger.info("Closing viewer handle")
         self.handle.close()
+        logger.info("MujocoViewerHandlerContext.__exit__ complete")
 
 
 def launch_passive(
@@ -461,6 +639,7 @@ def launch_passive(
         render_height: The height of the rendered image
         ctrl_dt: The control time step (used to calculate fps)
         make_plots: Whether to show a separate plotting window
+        
     Returns:
         A context manager that handles the MujocoViewer lifecycle
     """
