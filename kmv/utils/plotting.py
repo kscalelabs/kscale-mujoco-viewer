@@ -218,8 +218,16 @@ class Plotter:
                 plot_name = index_mapping[i]
                 self.update_plot(plot_name, x_value, y_value)
 
-    def render_frame(self) -> None:
+    def _on_viewport_ready(self) -> None:
+        logger.info("Viewport is ready.")
         run_on_main_thread(dpg.render_dearpygui_frame)
+
+    def render_frame(self) -> None:
+        if not dpg.is_viewport_ok():
+            logger.warning("Viewport is not created yet. Waiting for it to be ready.")
+            dpg.set_viewport_resize_callback(self._on_viewport_ready)
+        else:
+            run_on_main_thread(dpg.render_dearpygui_frame)
 
     def start(self) -> None:
         run_on_main_thread(dpg.show_viewport)
