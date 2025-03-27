@@ -9,3 +9,4 @@ colorlogging
 dearpygui
 pyobjc-core>=8.5; platform_system == "Darwin"
 pyobjc-framework-Cocoa>=8.5; platform_system == "Darwin"
+pynput
