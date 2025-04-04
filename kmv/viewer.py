@@ -13,7 +13,7 @@ from kmv.utils.markers import TrackingConfig, TrackingMarker
 from kmv.utils.plotting import Plotter
 from kmv.utils.saving import save_video
 from kmv.utils.transforms import rotation_matrix_from_direction
-from kmv.utils.types import CommandValue, ModelCache
+from kmv.utils.types import CommandValue, ModelCache, MujocoModel
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class MujocoViewerHandler:
         make_plots: bool = False,
     ) -> None:
         # breakpoint()
-        self.handle = handle
+        self.handle = handle.handle
         self._markers: list[TrackingMarker] = []
         self._frames: list[np.ndarray] = []
         self._capture_pixels = capture_pixels
@@ -116,9 +116,11 @@ class MujocoViewerHandler:
             self.handle._user_scn.ngeom = 0
             self._markers = []
 
-    def add_marker(
-        self,
+    @classmethod
+    def create_marker(
+        cls,
         name: str,
+        model: MujocoModel,
         pos: np.ndarray = np.zeros(3),
         orientation: np.ndarray = np.eye(3),
         color: np.ndarray = np.array([1, 0, 0, 1]),
@@ -132,8 +134,8 @@ class MujocoViewerHandler:
         track_rotation: bool = True,
         tracking_offset: np.ndarray = np.array([0, 0, 0]),
         geom: int = mujoco.mjtGeom.mjGEOM_SPHERE,
-    ) -> None:
-        """Add a marker to be rendered in the scene."""
+    ) -> TrackingMarker:
+        """Create a marker with the given parameters."""
         target_name = "world"
         target_type = "body"
         if track_geom_name is not None:
@@ -152,17 +154,54 @@ class MujocoViewerHandler:
             track_z=track_z,
             track_rotation=track_rotation,
         )
+
+        return TrackingMarker(
+            name=name,
+            pos=pos,
+            orientation=orientation,
+            color=color,
+            scale=scale,
+            label=label,
+            geom=geom,
+            tracking_cfg=tracking_cfg,
+            model_cache=ModelCache.create(model),
+        )
+
+    def add_marker(
+        self,
+        name: str,
+        pos: np.ndarray = np.zeros(3),
+        orientation: np.ndarray = np.eye(3),
+        color: np.ndarray = np.array([1, 0, 0, 1]),
+        scale: np.ndarray = np.array([0.1, 0.1, 0.1]),
+        label: str | None = None,
+        track_geom_name: str | None = None,
+        track_body_name: str | None = None,
+        track_x: bool = True,
+        track_y: bool = True,
+        track_z: bool = True,
+        track_rotation: bool = True,
+        tracking_offset: np.ndarray = np.array([0, 0, 0]),
+        geom: int = mujoco.mjtGeom.mjGEOM_SPHERE,
+    ) -> None:
+        """Add a marker to be rendered in the scene."""
         self._markers.append(
-            TrackingMarker(
+            self.create_marker(
                 name=name,
+                model=self.handle.m,
                 pos=pos,
                 orientation=orientation,
                 color=color,
                 scale=scale,
                 label=label,
+                track_geom_name=track_geom_name,
+                track_body_name=track_body_name,
+                track_x=track_x,
+                track_y=track_y,
+                track_z=track_z,
+                track_rotation=track_rotation,
+                tracking_offset=tracking_offset,
                 geom=geom,
-                tracking_cfg=tracking_cfg,
-                model_cache=self._model_cache,
             )
         )
 

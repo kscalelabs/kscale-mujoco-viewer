@@ -1,11 +1,15 @@
 """Classes for creating and updating markers in a MuJoCo scene."""
 
+import logging
+
 import mujoco
 import numpy as np
 from attrs import define, field
 
 from kmv.utils.mujoco_helpers import get_body_pose_by_name, get_geom_pose_by_name
 from kmv.utils.types import ModelCache
+
+logger = logging.getLogger(__name__)
 
 
 def get_target_pose(
@@ -62,6 +66,7 @@ class Marker:
             True if the marker was applied successfully, False otherwise
         """
         if scene.ngeom >= scene.maxgeom:
+            logger.warning("Max number of geoms reached. Marker not added.")
             return False
 
         # Get the next available geom in the scene
