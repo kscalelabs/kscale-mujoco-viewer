@@ -11,6 +11,7 @@ from kmv.utils.types import ModelCache
 
 logger = logging.getLogger(__name__)
 
+
 def get_target_pose(
     mj_model: mujoco.MjModel, mj_data: mujoco.MjData, target_name: str, target_type: str, cache: ModelCache
 ) -> tuple[np.ndarray, np.ndarray]:

@@ -16,6 +16,8 @@ from kmv.utils.transforms import rotation_matrix_from_direction
 from kmv.utils.types import CommandValue, ModelCache, MujocoModel
 
 logger = logging.getLogger(__name__)
+
+
 class MujocoViewerHandler:
     def __init__(
         self,
@@ -154,15 +156,15 @@ class MujocoViewerHandler:
         )
 
         return TrackingMarker(
-                name=name,
-                pos=pos,
-                orientation=orientation,
-                color=color,
-                scale=scale,
-                label=label,
-                geom=geom,
-                tracking_cfg=tracking_cfg,
-                model_cache=ModelCache.create(model),
+            name=name,
+            pos=pos,
+            orientation=orientation,
+            color=color,
+            scale=scale,
+            label=label,
+            geom=geom,
+            tracking_cfg=tracking_cfg,
+            model_cache=ModelCache.create(model),
         )
 
     def add_marker(

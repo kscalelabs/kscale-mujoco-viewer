@@ -13,6 +13,7 @@ T = TypeVar("T", bound=Optional[object])
 
 MujocoModel: TypeAlias = mujoco.MjModel | mjx.Model
 
+
 class CommandValue(Protocol):
     """Protocol for command values."""
 
