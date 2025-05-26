@@ -1,2 +1,3 @@
 mujoco
 PySide6
+pyqtgraph

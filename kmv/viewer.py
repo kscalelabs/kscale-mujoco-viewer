@@ -5,14 +5,16 @@ import sys
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget
+from PySide6.QtCore import Qt
 import mujoco
 
 from .engine import SimEngine
 from .renderer import GLViewport
+from .plots import QPosPlot
 
 
 class Viewer(QMainWindow):
-    """Drag-and-drop MuJoCo XML viewer (minimal)."""
+    """Drag-and-drop MuJoCo XML viewer (with live qpos[0] plot)."""
 
     def __init__(self, xml_text: str, parent=None) -> None:
         super().__init__(parent)
@@ -40,10 +42,19 @@ class Viewer(QMainWindow):
             # When physics steps, ask viewport to repaint ASAP
             self.engine.stepped.connect(self.viewport.request_update)
 
-            # Embed the QOpenGLWindow in the main window using createWindowContainer
+            # 1. embed the GL viewport
             print("Creating window container...")
             container = QWidget.createWindowContainer(self.viewport, self)
             self.setCentralWidget(container)
+            print("Window container created successfully")
+
+            # 2. create plot dock and wire it to the physics clock
+            print("Creating plot dock...")
+            self._plot_dock = QPosPlot(self.model, self.data, parent=self)
+            self.addDockWidget(Qt.RightDockWidgetArea, self._plot_dock)
+            self.engine.stepped.connect(self._plot_dock.on_step)
+            print("Plot dock created and connected successfully")
+            
             print("Viewer initialization complete")
 
         except Exception as e:
