@@ -32,3 +32,9 @@ class SimEngine(QObject):
     def _step(self) -> None:
         mujoco.mj_step(self.model, self.data)
         self.stepped.emit(self.data.time)
+        
+    def reset(self) -> None:
+        """Return the model to its XML initial state and emit a fresh step."""
+        mujoco.mj_resetData(self.model, self.data)
+        mujoco.mj_forward(self.model, self.data)         # recompute derived fields
+        self.stepped.emit(self.data.time)                # refresh all listeners

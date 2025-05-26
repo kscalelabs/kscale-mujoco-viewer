@@ -40,3 +40,12 @@ class QPosPlot(QDockWidget):
         self._x.append(sim_time)
         self._y.append(float(self._data.qpos[0]))
         self._curve.setData(self._x, self._y)
+
+
+    # inside class QPosPlot
+
+    def reset(self) -> None:
+        """Clear plot data."""
+        self._x.clear()
+        self._y.clear()
+        self._curve.clear()

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction
 import mujoco
 
 from .engine import SimEngine
@@ -54,6 +55,15 @@ class Viewer(QMainWindow):
             self.addDockWidget(Qt.RightDockWidgetArea, self._plot_dock)
             self.engine.stepped.connect(self._plot_dock.on_step)
             print("Plot dock created and connected successfully")
+
+            # --- toolbar with Reset button --------------------------------------
+            print("Creating toolbar...")
+            tb = self.addToolBar("Sim")
+            reset_act = QAction("Reset", self)
+            reset_act.setShortcut("R")
+            reset_act.triggered.connect(self._reset_sim)
+            tb.addAction(reset_act)
+            print("Toolbar created successfully")
             
             print("Viewer initialization complete")
 
@@ -67,6 +77,14 @@ class Viewer(QMainWindow):
     @staticmethod
     def from_path(path: str | Path) -> "Viewer":
         return Viewer(Path(path).read_text())
+
+    # ------------------------------------------------------------------ #
+    # private slot
+    # ------------------------------------------------------------------ #
+    def _reset_sim(self) -> None:
+        """Reset physics + clear plots."""
+        self.engine.reset()
+        self._plot_dock.reset()
 
 
 # --------------------------------------------------------------------------- #
