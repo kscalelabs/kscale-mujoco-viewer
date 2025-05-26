@@ -1,4 +1,7 @@
-__version__ = "0.1.13"
+"""kmv – K-Scale MuJoCo Viewer (minimal skeleton)."""
 
-from .utils import *
-from .viewer import *
+__version__ = "0.2.1"
+
+from .viewer import Viewer, launch          # re-export public API
+
+__all__ = ["Viewer", "launch"]
