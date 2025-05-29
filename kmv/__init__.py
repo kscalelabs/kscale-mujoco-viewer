@@ -2,6 +2,6 @@
 
 __version__ = "0.2.1"
 
-from .viewer import Viewer, launch          # re-export public API
+from .qtviewer import QtViewer, launch_interactive_viewer  # Main ksim-compatible viewer
 
-__all__ = ["Viewer", "launch"]
+__all__ = ["QtViewer", "launch_interactive_viewer"]
