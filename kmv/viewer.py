@@ -306,9 +306,6 @@ class QtViewer(QMainWindow):
         self._phys_plots.hide()
         self._phys_plots.toggleViewAction().setChecked(False)
 
-        # auto-size when shown
-        self._phys_plots.visibilityChanged.connect(self._on_dock_shown)
-
         # connect data updates
         self.simulation_step.connect(self._phys_plots.on_step)
     
@@ -323,9 +320,6 @@ class QtViewer(QMainWindow):
         # start hidden
         self._scalar_plots.hide()
         self._scalar_plots.toggleViewAction().setChecked(False)
-
-        # auto-size when shown
-        self._scalar_plots.visibilityChanged.connect(self._on_dock_shown)
     
     def push_scalars(self, t: float, scalars: dict[str, float]) -> None:
         """Append one {name: value} dict at absolute sim-time `t` (seconds)."""
@@ -523,13 +517,6 @@ class QtViewer(QMainWindow):
         else:
             if self._viewport._paint_timer.isActive():
                 self._viewport._paint_timer.stop()
-
-    def _on_dock_shown(self, visible: bool) -> None:
-        """Handle dock widget visibility change."""
-        if not visible:
-            return
-        dock_w = min(self.DEFAULT_DOCK_W, self.width() // 3)
-        self.resizeDocks([self._phys_plots], [dock_w], Qt.Orientation.Horizontal)
 
     def _update_time_labels(self, total_sim_time: float) -> None:
         """Update the time labels based on the current simulation time.
