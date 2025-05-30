@@ -28,6 +28,7 @@ class GLViewport(QOpenGLWindow):
 
     # External widgets can call .request_update.emit() for an immediate repaint
     request_update = Signal()
+    fps_changed    = Signal(int)
 
     def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, max_geom: int = 20000) -> None:
         super().__init__()  # Don't pass parent to QOpenGLWindow
@@ -51,7 +52,9 @@ class GLViewport(QOpenGLWindow):
         # Control update frequency during mouse interaction
         self._last_mouse_update = 0
 
-        # steady GUI refresh - make the timer more robust
+        self._frame_ctr     = 0
+        self._last_fps_time = time.time()
+
         self._paint_timer = QTimer(self)
         self._paint_timer.setInterval(16)  # ~60Hz
         self._paint_timer.setSingleShot(False)
@@ -68,7 +71,6 @@ class GLViewport(QOpenGLWindow):
         """
         self._callback = callback
 
-    # -------- Qt / OpenGL lifecycle ------------------------------------- #
     def initializeGL(self) -> None:
         self.ctx = mujoco.MjrContext(self.model,
                                      mujoco.mjtFontScale.mjFONTSCALE_150)
@@ -78,6 +80,14 @@ class GLViewport(QOpenGLWindow):
 
     def paintGL(self) -> None:
         self._render_scene()
+
+        self._frame_ctr += 1
+        now = time.time()
+        if now - self._last_fps_time >= 1.0:
+            fps = self._frame_ctr
+            self._frame_ctr = 0
+            self._last_fps_time = now
+            self.fps_changed.emit(fps)
 
     def _render_scene(self) -> None:
         """Internal method to render the scene with callback support."""
@@ -124,18 +134,10 @@ class GLViewport(QOpenGLWindow):
         width = int(self._log_w * dpr)
         height = int(self._log_h * dpr)
         
-        # Read pixels from the framebuffer
-        rgb_data = mujoco.mjr_readPixels(None, None, mujoco.MjrRect(0, 0, width, height), self.ctx)
-        
-        if rgb_data is None:
-            raise RuntimeError("Failed to read pixels from framebuffer")
-        
-        # Convert to numpy array and reshape
-        # MuJoCo returns data in row-major order, bottom-up
-        rgb_array = np.frombuffer(rgb_data, dtype=np.uint8)
-        rgb_array = rgb_array.reshape((height, width, 3))
-        
-        # Flip vertically (OpenGL convention is bottom-up, we want top-down)
+        # Render pixels to the framebuffer
+        rect = mujoco.MjrRect(0, 0, width, height)
+        rgb_array = np.empty((height, width, 3), dtype=np.uint8)
+        mujoco.mjr_readPixels(rgb_array, None, rect, self.ctx)
         rgb_array = np.flipud(rgb_array)
         
         self.doneCurrent()
@@ -205,7 +207,7 @@ class GLViewport(QOpenGLWindow):
         current_time = time.time()
         if (self._mouse_button_left or self._mouse_button_right or self._mouse_button_middle):
             if current_time - self._last_mouse_update > 0.016:  # ~60fps limit
-                self.update()
+                self.request_update.emit() 
                 self._last_mouse_update = current_time
         
         event.accept()

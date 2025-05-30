@@ -2,6 +2,6 @@
 
 __version__ = "0.2.1"
 
-from .qtviewer import QtViewer, launch_interactive_viewer  # Main ksim-compatible viewer
+from kmv.viewer import DefaultMujocoViewer, QtViewer
 
-__all__ = ["QtViewer", "launch_interactive_viewer"]
+__all__ = ["DefaultMujocoViewer", "QtViewer"]
