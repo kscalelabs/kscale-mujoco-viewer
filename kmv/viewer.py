@@ -422,11 +422,11 @@ class QtViewer(QMainWindow):
         
         # Give Qt a tiny time-slice (e.g. 5 ms).  This keeps the UI responsive
         # but prevents an infinite loop when continuous input events are present.
+        self._viewport.request_update.emit()
         self.app.processEvents(
             QEventLoop.ProcessEventsFlag.AllEvents,
             max_time_ms
         )
-        self._viewport.request_update.emit()
     
     def read_pixels(self, callback: Callback | None = None) -> np.ndarray:
         """Read pixels from the framebuffer.

@@ -34,6 +34,10 @@ class GLViewport(QOpenGLWindow):
         super().__init__()  # Don't pass parent to QOpenGLWindow
         self.model, self.data = model, data
 
+        self.pert = mujoco.MjvPerturb()      # keeps selection + drag info
+        self.pert.active = 0
+        self.pert.select = 0                 # no body selected yet
+
         self.opt   = mujoco.MjvOption()
         self.scene = mujoco.MjvScene(model, maxgeom=max_geom)
         self.cam   = mujoco.MjvCamera()
@@ -90,7 +94,14 @@ class GLViewport(QOpenGLWindow):
             self.fps_changed.emit(fps)
 
     def _render_scene(self) -> None:
-        """Internal method to render the scene with callback support."""
+        """Render scene, update perturbation forces, then draw."""
+        # 1.  Write external force/torque for the currently dragged body.
+        #     These end up in self.data.xfrc_applied and are copied into
+        #     ksim's master mjData each viewer.step() call.
+        self.data.xfrc_applied[:] = 0
+        mujoco.mjv_applyPerturbPose(self.model, self.data, self.pert, 0)
+        mujoco.mjv_applyPerturbForce(self.model, self.data, self.pert)
+
         dpr = self.devicePixelRatioF()
         rect = mujoco.MjrRect(
             0, 0,
@@ -98,9 +109,9 @@ class GLViewport(QOpenGLWindow):
             int(self._log_h * dpr),
         )
 
-        # Update the scene
+        # 2.  Pass `self.pert` so MuJoCo draws the red/blue force arrow.
         mujoco.mjv_updateScene(self.model, self.data,
-                               self.opt, None, self.cam,
+                               self.opt, self.pert, self.cam,
                                mujoco.mjtCatBit.mjCAT_ALL,
                                self.scene)
 
@@ -156,6 +167,40 @@ class GLViewport(QOpenGLWindow):
             self._mouse_button_right = True
         elif event.button() == Qt.MouseButton.MiddleButton:
             self._mouse_button_middle = True
+
+        ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+
+        if ctrl:
+            aspect = self._log_w / self._log_h
+            relx   = self._mouse_last_x / self._log_w
+            rely   = (self._log_h - self._mouse_last_y) / self._log_h
+
+            selpnt = np.zeros(3)
+            selgeom = np.zeros(1, dtype=np.int32)
+            selskin = np.zeros(1, dtype=np.int32)
+            selflex = np.zeros(1, dtype=np.int32)
+
+            selbody = mujoco.mjv_select(
+                self.model, self.data, self.opt,
+                aspect, relx, rely,
+                self.scene, selpnt,
+                selgeom, selflex, selskin)
+
+            if selbody >= 0:
+                # Record the picked body and local click point
+                self.pert.select = int(selbody)
+                self.pert.skinselect = int(selskin[0])
+                vec = selpnt - self.data.xpos[selbody]
+                self.pert.localpos = self.data.xmat[selbody].reshape(3, 3) @ vec
+
+                # Decide mode:  left = rotate, right = translate
+                if self._mouse_button_left:
+                    self.pert.active = mujoco.mjtPertBit.mjPERT_ROTATE
+                elif self._mouse_button_right:
+                    self.pert.active = mujoco.mjtPertBit.mjPERT_TRANSLATE
+            else:
+                self.pert.select = 0
+                self.pert.active = 0
             
         event.accept()
 
@@ -167,6 +212,9 @@ class GLViewport(QOpenGLWindow):
             self._mouse_button_right = False
         elif event.button() == Qt.MouseButton.MiddleButton:
             self._mouse_button_middle = False
+
+        # Stop perturb drag
+        self.pert.active = 0
             
         event.accept()
 
@@ -178,8 +226,21 @@ class GLViewport(QOpenGLWindow):
         dx = current_x - self._mouse_last_x
         dy = current_y - self._mouse_last_y
         
-        # Camera controls similar to standard MuJoCo viewer
-        if self._mouse_button_left:
+        ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+
+        if self.pert.active:
+            action = (mujoco.mjtMouse.mjMOUSE_ROTATE_H
+                      if self.pert.active == mujoco.mjtPertBit.mjPERT_ROTATE
+                      else mujoco.mjtMouse.mjMOUSE_MOVE_H)
+            mujoco.mjv_movePerturb(
+                self.model, self.data,
+                action,
+                dx / self._log_h,
+                dy / self._log_h,
+                self.scene,
+                self.pert)
+
+        elif self._mouse_button_left:
             # Rotate camera
             self.cam.azimuth += dx * 0.5
             self.cam.elevation -= dy * 0.5
