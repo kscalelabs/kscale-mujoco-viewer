@@ -383,7 +383,6 @@ class QtViewer(QMainWindow):
                 self._time_offset += self._last_mj_time
             self._last_mj_time = cur
             total_sim_time = self._time_offset + cur
-            print(f"Raw sim time: {cur:.6f}s | Total sim time: {total_sim_time:.6f}s")
             self.simulation_step.emit(total_sim_time)
         
         # Give Qt a tiny time-slice (e.g. 5 ms).  This keeps the UI responsive
@@ -414,7 +413,6 @@ class QtViewer(QMainWindow):
                 self._time_offset += self._last_mj_time
             self._last_mj_time = cur
             total_sim_time = self._time_offset + cur
-            print(f"Raw sim time: {cur:.6f}s | Total sim time: {total_sim_time:.6f}s")
             self.simulation_step.emit(total_sim_time)
         
         # Get the pixels from the viewport
