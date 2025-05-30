@@ -13,7 +13,7 @@ from PySide6.QtCore import QTimer, Qt, QEventLoop, Signal
 from PySide6.QtGui import QAction
 
 from .renderer import GLViewport
-from .utils.plotting import PhysicsPlotsDock
+from .utils.plotting import PhysicsPlotsDock, ScalarPlotsDock
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +161,7 @@ class QtViewer(QMainWindow):
         inertia: bool = False,
         max_geom: int = 10000,
         show_live_plots: bool = True,
+        show_scalar_plots: bool = True,
     ) -> None:
         """Initialize the KMV MuJoCo viewer.
 
@@ -178,6 +179,7 @@ class QtViewer(QMainWindow):
             inertia: Whether to render inertia
             max_geom: Maximum number of geometries to render
             show_live_plots: Whether to show live plotting panels
+            show_scalar_plots: Whether to show scalar plotting panels
         """
         # Initialize Qt application if needed
         self.app = QApplication.instance() or QApplication(sys.argv)
@@ -226,17 +228,26 @@ class QtViewer(QMainWindow):
 
         # FPS label in status-bar
         self._fps_label = QLabel("FPS: --")
+        self._raw_time_label = QLabel("Raw Time: 0.00s")
+        self._total_time_label = QLabel("Total Time: 0.00s")
         status = QStatusBar(self)
         status.addPermanentWidget(self._fps_label)
+        status.addPermanentWidget(self._raw_time_label)
+        status.addPermanentWidget(self._total_time_label)
         self.setStatusBar(status)
 
         self._viewport.fps_changed.connect(  # update label whenever renderer tells us
             lambda v: self._fps_label.setText(f"FPS: {v}")
         )
         
+        # Connect simulation step signal to update time labels
+        self.simulation_step.connect(self._update_time_labels)
+        
         # Add live plots if requested and in window mode
         if self._show_live_plots and mode == "window":
             self._setup_live_plots()
+            if show_scalar_plots:
+                self._setup_scalar_plots()
 
         # NEW: menus & toolbar
         if mode == "window":
@@ -301,6 +312,26 @@ class QtViewer(QMainWindow):
         # connect data updates
         self.simulation_step.connect(self._phys_plots.on_step)
     
+    def _setup_scalar_plots(self) -> None:
+        """Dock that visualises arbitrary scalar series (e.g. rewards)."""
+        self._scalar_plots = ScalarPlotsDock("Reward / scalar plots", parent=self)
+        self._scalar_plots.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
+        )
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._scalar_plots)
+
+        # start hidden
+        self._scalar_plots.hide()
+        self._scalar_plots.toggleViewAction().setChecked(False)
+
+        # auto-size when shown
+        self._scalar_plots.visibilityChanged.connect(self._on_dock_shown)
+    
+    def push_scalars(self, t: float, scalars: dict[str, float]) -> None:
+        """Append one {name: value} dict at absolute sim-time `t` (seconds)."""
+        if hasattr(self, "_scalar_plots"):
+            self._scalar_plots.push(t, scalars)
+    
     def _build_menus_and_toolbar(self) -> None:
         """Create View menu + toolbar entries for all dock widgets."""
         menubar = self.menuBar()
@@ -313,10 +344,18 @@ class QtViewer(QMainWindow):
             phys_action.setText("Physics Plots")
             view_menu.addAction(phys_action)
 
-            # (Optional but nice) duplicate the same action in a toolbar
-            toolbar = self.addToolBar("View")
-            toolbar.setMovable(False)
-            toolbar.addAction(phys_action)
+        if hasattr(self, '_scalar_plots'):
+            scalar_action = self._scalar_plots.toggleViewAction()
+            scalar_action.setText("Scalar Plots")
+            view_menu.addAction(scalar_action)
+
+        # (Optional but nice) duplicate the same action in a toolbar
+        toolbar = self.addToolBar("View")
+        toolbar.setMovable(False)
+        if hasattr(self, '_phys_plots'):
+            toolbar.addAction(self._phys_plots.toggleViewAction())
+        if hasattr(self, '_scalar_plots'):
+            toolbar.addAction(self._scalar_plots.toggleViewAction())
     
     def _reset_simulation(self) -> None:
         """Reset the simulation to initial state."""
@@ -326,6 +365,8 @@ class QtViewer(QMainWindow):
         # Reset plot data if live plots are enabled
         if self._show_live_plots and hasattr(self, '_phys_plots'):
             self._phys_plots.reset()
+        if hasattr(self, '_scalar_plots'):
+            self._scalar_plots.reset()
     
     # Properties to match ksim's interface
     @property
@@ -453,6 +494,8 @@ class QtViewer(QMainWindow):
         # Clean up plot widgets
         if self._show_live_plots and hasattr(self, '_phys_plots'):
             self._phys_plots.close()
+        if hasattr(self, '_scalar_plots'):
+            self._scalar_plots.close()
         
         # Clean up Qt resources
         if hasattr(self, '_viewport'):
@@ -488,6 +531,15 @@ class QtViewer(QMainWindow):
         dock_w = min(self.DEFAULT_DOCK_W, self.width() // 3)
         self.resizeDocks([self._phys_plots], [dock_w], Qt.Orientation.Horizontal)
 
+    def _update_time_labels(self, total_sim_time: float) -> None:
+        """Update the time labels based on the current simulation time.
+        
+        Args:
+            total_sim_time: The total simulation time (accumulated across resets)
+        """
+        raw_time = float(self._data.time)
+        self._raw_time_label.setText(f"Raw Time: {raw_time:.2f}s")
+        self._total_time_label.setText(f"Total Time: {total_sim_time:.2f}s")
 
     def set_mjdata(self, data: mujoco.MjData) -> None:
         """

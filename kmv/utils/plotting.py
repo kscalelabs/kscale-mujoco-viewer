@@ -124,3 +124,64 @@ class PhysicsPlotsDock(BasePlotDock):
     def set_mjdata(self, data: mujoco.MjData) -> None:
         self._data = data
 
+class ScalarPlotsDock(BasePlotDock):
+    """
+    Live plots for arbitrary scalar time-series.
+
+    Usage
+    -----
+        dock.push(t, {"reward_total": 1.23, "upright": 0.45})
+
+    A curve is created the first time a key appears.
+    """
+
+    HISTORY    = 5_000
+    WINDOW_SEC = 5.0
+
+    def __init__(self, title="Scalar plots", parent=None):
+        self._x   = deque(maxlen=self.HISTORY)
+        self._y   = {}            # key -> deque[float]
+        self._viewboxes = []      # for fast sliding
+        super().__init__(title, parent)
+
+    # BasePlotDock calls this once in __init__.  We start empty.
+    def create_plots(self) -> None:            # noqa: D401
+        pass
+
+    def push(self, t: float, scalars: dict[str, float]) -> None:
+        """Append one time-stamp worth of scalars."""
+        self._x.append(t)
+        for key, val in scalars.items():
+            if key not in self._y:                 # first sight → add curve
+                self._y[key] = deque(maxlen=self.HISTORY)
+                self._add_curve(key)
+            self._y[key].append(val)
+            self._curves[key].setData(self._x, self._y[key])
+
+        # slide window
+        left  = t - self.WINDOW_SEC
+        right = t
+        for vb in self._viewboxes:
+            vb.setXRange(left, right, padding=0)
+
+    def _add_curve(self, name: str) -> None:
+        row = len(self._curves)
+        plt = self._layout.addPlot(row=row, col=0)
+        plt.setLabel("left", name)
+        plt.setLabel("bottom", "time (s)")
+        vb = plt.getViewBox()
+        vb.setXRange(0, self.WINDOW_SEC, padding=0)
+        vb.enableAutoRange(y=True, x=False)
+        curve = plt.plot()      # let pyqtgraph pick a colour
+
+        self._viewboxes.append(vb)
+        self._curves[name] = curve
+
+    def reset(self) -> None:
+        """Clear all data and curves."""
+        self._x.clear()
+        for dq in self._y.values():
+            dq.clear()
+        for curve in self._curves.values():
+            curve.clear()
+            curve.getViewBox().enableAutoRange(x=True, y=True)
