@@ -151,7 +151,7 @@ class QtViewer(QMainWindow):
         model: mujoco.MjModel,
         data: mujoco.MjData | None = None,
         mode: RenderMode = "window",
-        title: str = "KMV MuJoCo Viewer",
+        title: str = "K-Scale MuJoCo Viewer",
         width: int | None = None,
         height: int | None = None,
         shadow: bool = False,
@@ -163,7 +163,7 @@ class QtViewer(QMainWindow):
         show_live_plots: bool = True,
         show_scalar_plots: bool = True,
     ) -> None:
-        """Initialize the KMV MuJoCo viewer.
+        """Initialize the K-Scale MuJoCo viewer.
 
         Args:
             model: MuJoCo model
