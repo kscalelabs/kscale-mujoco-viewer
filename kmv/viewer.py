@@ -9,11 +9,11 @@ from typing import Callable, Literal, get_args
 import mujoco
 import numpy as np
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QStatusBar
-from PySide6.QtCore import QTimer, Qt, QEventLoop
+from PySide6.QtCore import QTimer, Qt, QEventLoop, Signal
 from PySide6.QtGui import QAction
 
 from .renderer import GLViewport
-from .plots import QPosPlot
+from .utils.plotting import PhysicsPlotsDock
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +139,13 @@ class QtViewer(QMainWindow):
     Qt/PySide6 for better integration and extensibility.
     """
 
+    # Signal emitted when simulation data is updated
+    simulation_step = Signal(float)  # emits simulation time
+
+    DEFAULT_WIN_W = 900
+    DEFAULT_WIN_H = 550
+    DEFAULT_DOCK_W = 250
+
     def __init__(
         self,
         model: mujoco.MjModel,
@@ -153,6 +160,7 @@ class QtViewer(QMainWindow):
         contact_point: bool = False,
         inertia: bool = False,
         max_geom: int = 10000,
+        show_live_plots: bool = True,
     ) -> None:
         """Initialize the KMV MuJoCo viewer.
 
@@ -169,6 +177,7 @@ class QtViewer(QMainWindow):
             contact_point: Whether to render contact points
             inertia: Whether to render inertia
             max_geom: Maximum number of geometries to render
+            show_live_plots: Whether to show live plotting panels
         """
         # Initialize Qt application if needed
         self.app = QApplication.instance() or QApplication(sys.argv)
@@ -178,20 +187,25 @@ class QtViewer(QMainWindow):
         self.setWindowTitle(title)
         self._mode = mode
         self._is_alive = True
+        self._show_live_plots = show_live_plots
+        
+        self._time_offset   = 0.0   # accumulated time from previous episodes
+        self._last_mj_time  = 0.0   # last MuJoCo time we saw
         
         # Store MuJoCo objects
         self._model = model
-        self._data = data or mujoco.MjData(model)
+        self._data = data or mujoco.MjData(model)  # keep a handle instead of accessing via `_viewport` only
         
         # Set default dimensions
         if width is None:
-            width = 640
+            width = self.DEFAULT_WIN_W
         if height is None:
-            height = 480
+            height = self.DEFAULT_WIN_H
         self.resize(width, height)
         
         # Create the GL viewport (main renderer)
         self._viewport = GLViewport(self._model, self._data, max_geom=max_geom)
+        self._viewport.set_mjdata(self._data)
         
         # Configure scene options
         self._configure_scene_options(
@@ -219,6 +233,14 @@ class QtViewer(QMainWindow):
         self._viewport.fps_changed.connect(  # update label whenever renderer tells us
             lambda v: self._fps_label.setText(f"FPS: {v}")
         )
+        
+        # Add live plots if requested and in window mode
+        if self._show_live_plots and mode == "window":
+            self._setup_live_plots()
+
+        # NEW: menus & toolbar
+        if mode == "window":
+            self._build_menus_and_toolbar()
     
     def _configure_scene_options(
         self,
@@ -261,10 +283,49 @@ class QtViewer(QMainWindow):
         # Show the window
         self.show()
     
+    def _setup_live_plots(self) -> None:
+        """Set up live plotting panels as dock widgets."""
+        self._phys_plots = PhysicsPlotsDock(self._model, self._data, parent=self)
+        self._phys_plots.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
+        )
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._phys_plots)
+
+        # start hidden
+        self._phys_plots.hide()
+        self._phys_plots.toggleViewAction().setChecked(False)
+
+        # auto-size when shown
+        self._phys_plots.visibilityChanged.connect(self._on_dock_shown)
+
+        # connect data updates
+        self.simulation_step.connect(self._phys_plots.on_step)
+    
+    def _build_menus_and_toolbar(self) -> None:
+        """Create View menu + toolbar entries for all dock widgets."""
+        menubar = self.menuBar()
+        view_menu = menubar.addMenu("&View")
+
+        # Use Qt's built-in toggle action so checked state ↔ visibility stay
+        # synchronised automatically.
+        if hasattr(self, '_phys_plots'):
+            phys_action = self._phys_plots.toggleViewAction()
+            phys_action.setText("Physics Plots")
+            view_menu.addAction(phys_action)
+
+            # (Optional but nice) duplicate the same action in a toolbar
+            toolbar = self.addToolBar("View")
+            toolbar.setMovable(False)
+            toolbar.addAction(phys_action)
+    
     def _reset_simulation(self) -> None:
         """Reset the simulation to initial state."""
         mujoco.mj_resetData(self._model, self._data)
         mujoco.mj_forward(self._model, self._data)
+        
+        # Reset plot data if live plots are enabled
+        if self._show_live_plots and hasattr(self, '_phys_plots'):
+            self._phys_plots.reset()
     
     # Properties to match ksim's interface
     @property
@@ -298,7 +359,7 @@ class QtViewer(QMainWindow):
         return self._is_alive and not self.isHidden()
     
     # Main interface methods
-    def render(self, callback: Callback | None = None, max_time_ms: int = 1) -> None:
+    def render(self, callback: Callback | None = None, max_time_ms: int = 5) -> None:
         """Render the current scene.
         
         Args:
@@ -313,6 +374,17 @@ class QtViewer(QMainWindow):
         # Set the callback and trigger a render
         self._viewport.set_callback(callback)
         # self._viewport.update()  # Trigger paintGL
+        
+        # Emit simulation step signal for live plots
+        if self._show_live_plots:
+            cur = float(self._data.time)
+            # Detect reset: MuJoCo time went backwards
+            if cur < self._last_mj_time - 1e-9:
+                self._time_offset += self._last_mj_time
+            self._last_mj_time = cur
+            total_sim_time = self._time_offset + cur
+            print(f"Raw sim time: {cur:.6f}s | Total sim time: {total_sim_time:.6f}s")
+            self.simulation_step.emit(total_sim_time)
         
         # Give Qt a tiny time-slice (e.g. 5 ms).  This keeps the UI responsive
         # but prevents an infinite loop when continuous input events are present.
@@ -333,6 +405,17 @@ class QtViewer(QMainWindow):
         """
         # Set the callback
         self._viewport.set_callback(callback)
+        
+        # Emit simulation step signal for live plots
+        if self._show_live_plots:
+            cur = float(self._data.time)
+            # Detect reset: MuJoCo time went backwards
+            if cur < self._last_mj_time - 1e-9:
+                self._time_offset += self._last_mj_time
+            self._last_mj_time = cur
+            total_sim_time = self._time_offset + cur
+            print(f"Raw sim time: {cur:.6f}s | Total sim time: {total_sim_time:.6f}s")
+            self.simulation_step.emit(total_sim_time)
         
         # Get the pixels from the viewport
         return self._viewport.read_pixels()
@@ -369,6 +452,10 @@ class QtViewer(QMainWindow):
         self._is_alive = False
         self.hide()
         
+        # Clean up plot widgets
+        if self._show_live_plots and hasattr(self, '_phys_plots'):
+            self._phys_plots.close()
+        
         # Clean up Qt resources
         if hasattr(self, '_viewport'):
             self._viewport.close()
@@ -395,6 +482,24 @@ class QtViewer(QMainWindow):
         else:
             if self._viewport._paint_timer.isActive():
                 self._viewport._paint_timer.stop()
+
+    def _on_dock_shown(self, visible: bool) -> None:
+        """Handle dock widget visibility change."""
+        if not visible:
+            return
+        dock_w = min(self.DEFAULT_DOCK_W, self.width() // 3)
+        self.resizeDocks([self._phys_plots], [dock_w], Qt.Orientation.Horizontal)
+
+
+    def set_mjdata(self, data: mujoco.MjData) -> None:
+        """
+        Replace the MjData object used by the viewer and its sub-widgets.
+        Call this immediately after every environment reset.
+        """
+        self._data = data
+        self._viewport.set_mjdata(data)
+        if hasattr(self, "_phys_plots"):
+            self._phys_plots.set_mjdata(data)
 
 
 

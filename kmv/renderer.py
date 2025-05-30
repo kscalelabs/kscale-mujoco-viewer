@@ -221,3 +221,7 @@ class GLViewport(QOpenGLWindow):
         
         # Don't trigger immediate update - let the timer or external render calls handle it
         event.accept()
+
+    def set_mjdata(self, data: mujoco.MjData) -> None:
+        """Viewer hands us a fresh MjData after every reset."""
+        self.data = data
