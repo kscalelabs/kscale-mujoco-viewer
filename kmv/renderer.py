@@ -193,11 +193,13 @@ class GLViewport(QOpenGLWindow):
                 vec = selpnt - self.data.xpos[selbody]
                 self.pert.localpos = self.data.xmat[selbody].reshape(3, 3) @ vec
 
-                # Decide mode:  left = rotate, right = translate
+                # Decide mode and initialise the perturb helper
                 if self._mouse_button_left:
                     self.pert.active = mujoco.mjtPertBit.mjPERT_ROTATE
                 elif self._mouse_button_right:
                     self.pert.active = mujoco.mjtPertBit.mjPERT_TRANSLATE
+
+                mujoco.mjv_initPerturb(self.model, self.data, self.scene, self.pert)
             else:
                 self.pert.select = 0
                 self.pert.active = 0
