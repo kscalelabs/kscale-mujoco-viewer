@@ -46,6 +46,7 @@ class QtViewer(QMainWindow):
         contact_force: bool = False,
         contact_point: bool = False,
         inertia: bool = False,
+        enable_plots: bool = True,
         **_ignored,
     ) -> None:
         self.app = QApplication.instance() or QApplication(sys.argv)
@@ -74,10 +75,17 @@ class QtViewer(QMainWindow):
         self.setStatusBar(status_bar)
         self._status_bar_manager = SimulationStatusBar(status_bar)
 
-        self._scalar_plot = ScalarPlot(history=600, max_curves=24)
-        dock = QDockWidget("Scalars", self)
-        dock.setWidget(self._scalar_plot)
-        self.addDockWidget(Qt.BottomDockWidgetArea, dock)
+        # Store enable_plots for later use
+        self._enable_plots = enable_plots
+        
+        # Only create and add scalar plot widget if plots are enabled
+        if self._enable_plots:
+            self._scalar_plot = ScalarPlot(history=600, max_curves=24)
+            dock = QDockWidget("Scalars", self)
+            dock.setWidget(self._scalar_plot)
+            self.addDockWidget(Qt.BottomDockWidgetArea, dock)
+        else:
+            self._scalar_plot = None
 
         # Time tracking for absolute time calculation
         self._time_offset: float = 0.0
@@ -148,8 +156,10 @@ class QtViewer(QMainWindow):
 
     def push_scalar(self, sim_time: float, scalars: dict[str, float]) -> None:
         """Stream scalar values for live plotting."""
-        absolute_time = self._calculate_absolute_time(sim_time)
-        self._scalar_plot.update_data(absolute_time, scalars)
+        # Only update plots if they are enabled
+        if self._enable_plots and self._scalar_plot is not None:
+            absolute_time = self._calculate_absolute_time(sim_time)
+            self._scalar_plot.update_data(absolute_time, scalars)
 
     def update(self, callback: Callback | None = None) -> np.ndarray:
         """
