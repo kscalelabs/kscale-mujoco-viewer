@@ -76,6 +76,10 @@ class QtViewer(QMainWindow):
         dock.setWidget(self._scalar_plot)
         self.addDockWidget(Qt.BottomDockWidgetArea, dock)
 
+        # Time tracking for absolute time calculation
+        self._time_offset: float = 0.0
+        self._last_sim_time: float = 0.0
+
         if mode == "window":
             self.show()
 
@@ -115,15 +119,29 @@ class QtViewer(QMainWindow):
         arr = img.toImage().convertToFormat(4).constBits().asarray(img.height()*img.width()*4)
         return arr.reshape(img.height(), img.width(), 4)[..., :3]        # RGB
 
-    # ---- new public API --------------------------------------------------
-    def push_mujoco_frame(self, *, qpos: np.ndarray, qvel: np.ndarray, xfrc_applied: np.ndarray | None = None) -> None:
+    def _calculate_absolute_time(self, sim_time: float) -> float:
+        """Calculate absolute time, handling resets by maintaining an offset."""
+        if sim_time < self._last_sim_time - 1e-9:  # detect reset
+            self._time_offset += self._last_sim_time
+        self._last_sim_time = sim_time
+        return self._time_offset + sim_time
+
+    def push_mujoco_frame(
+        self, 
+        *, 
+        qpos: np.ndarray, 
+        qvel: np.ndarray, 
+        sim_time: float,
+        xfrc_applied: np.ndarray | None = None
+    ) -> None:
         """Append one physics frame (qpos/qvel) to the internal queue."""
         frame = Frame(qpos=qpos, qvel=qvel, xfrc_applied=xfrc_applied)
         self._ringbuffer.push(frame)
 
-    def push_scalar(self, t: float, scalars: dict[str, float]) -> None:
+    def push_scalar(self, sim_time: float, scalars: dict[str, float]) -> None:
         """Stream scalar values for live plotting."""
-        self._scalar_plot.update_data(t, scalars)
+        absolute_time = self._calculate_absolute_time(sim_time)
+        self._scalar_plot.update_data(absolute_time, scalars)
 
     def update(self, callback: Callback | None = None) -> np.ndarray:
         """
