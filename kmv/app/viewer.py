@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from kmv.ui.gl.viewport import GLViewport
 from kmv.ui.plotting.plots import ScalarPlot
+from kmv.ui.chrome.statusbar import SimulationStatusBar
 from kmv.core.types import RenderMode, Frame
 from kmv.core.buffer import RingBuffer
 
@@ -68,8 +69,10 @@ class QtViewer(QMainWindow):
         )
         self.setCentralWidget(self._viewport)
 
-        # status bar for FPS readout
-        self.setStatusBar(QStatusBar(self))
+        # status bar for FPS readout and timing information
+        status_bar = QStatusBar(self)
+        self.setStatusBar(status_bar)
+        self._status_bar_manager = SimulationStatusBar(status_bar)
 
         self._scalar_plot = ScalarPlot(history=600, max_curves=24)
         dock = QDockWidget("Scalars", self)
@@ -79,6 +82,10 @@ class QtViewer(QMainWindow):
         # Time tracking for absolute time calculation
         self._time_offset: float = 0.0
         self._last_sim_time: float = 0.0
+        self.absolute_sim_time: float = 0.0  # Public attribute as requested
+
+        # Connect viewport to status bar manager
+        self._viewport.set_status_bar_manager(self._status_bar_manager)
 
         if mode == "window":
             self.show()
@@ -124,7 +131,8 @@ class QtViewer(QMainWindow):
         if sim_time < self._last_sim_time - 1e-9:  # detect reset
             self._time_offset += self._last_sim_time
         self._last_sim_time = sim_time
-        return self._time_offset + sim_time
+        self.absolute_sim_time = self._time_offset + sim_time
+        return self.absolute_sim_time
 
     def push_mujoco_frame(
         self, 
@@ -137,6 +145,11 @@ class QtViewer(QMainWindow):
         """Append one physics frame (qpos/qvel) to the internal queue."""
         frame = Frame(qpos=qpos, qvel=qvel, xfrc_applied=xfrc_applied)
         self._ringbuffer.push(frame)
+        
+        # Update timing information
+        absolute_time = self._calculate_absolute_time(sim_time)
+        self._status_bar_manager.set_sim_time(sim_time)
+        self._status_bar_manager.set_absolute_sim_time(absolute_time)
 
     def push_scalar(self, sim_time: float, scalars: dict[str, float]) -> None:
         """Stream scalar values for live plotting."""

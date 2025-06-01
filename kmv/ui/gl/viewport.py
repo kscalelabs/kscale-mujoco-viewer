@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 import time
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
 
 import mujoco
 import numpy as np
@@ -12,6 +12,9 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from kmv.core.buffer import RingBuffer
 from kmv.core.types import Frame
+
+if TYPE_CHECKING:
+    from kmv.ui.chrome.statusbar import SimulationStatusBar
 
 
 _fmt = QSurfaceFormat()
@@ -59,8 +62,7 @@ class GLViewport(QOpenGLWidget):
 
         self._ringbuffer = ringbuffer
         self._callback: Callable | None = None
-        self._fps_timer = time.time()
-        self._frame_ctr = 0
+        self._status_bar_manager: SimulationStatusBar | None = None
 
         self._mouse_btn: int | None = None
         self._last_x  = 0.0
@@ -80,6 +82,10 @@ class GLViewport(QOpenGLWidget):
 
     def set_mjdata(self, data: mujoco.MjData) -> None:
         self._data_ptr = data
+
+    def set_status_bar_manager(self, status_bar_manager: SimulationStatusBar) -> None:
+        """Set the status bar manager for updating status information."""
+        self._status_bar_manager = status_bar_manager
 
     def _set_vis_flags(
         self,
@@ -195,23 +201,13 @@ class GLViewport(QOpenGLWidget):
 
         mujoco.mjr_render(rect, self.scene, self.ctx)
 
-        self._frame_ctr += 1
-        if time.time() - self._fps_timer >= 1.0:
-            if self._ringbuffer is not None:
-                pushes = self._ringbuffer.push_count
-                pops   = self._ringbuffer.pop_count
-                dropped = pushes - pops
-                backlog = len(self._ringbuffer)
-                msg = (
-                    f"{self._frame_ctr} FPS   "
-                    f"P:{pushes}  C:{pops}  Δ:{dropped}  len:{backlog}"
-                )
-            else:
-                msg = f"{self._frame_ctr} FPS"
-            self.window().statusBar().showMessage(msg)
-
-            self._frame_ctr = 0
-            self._fps_timer = time.time()
+        # Update status bar through the manager if available
+        if self._status_bar_manager is not None:
+            sim_time = float(self._data_ptr.time)
+            self._status_bar_manager.update_fps_and_timing(
+                ringbuffer=self._ringbuffer,
+                sim_time=sim_time,
+            )
 
     def mousePressEvent(self, ev):                         # type: ignore[override]
         """Start camera drag or (Ctrl + button) perturb drag."""
