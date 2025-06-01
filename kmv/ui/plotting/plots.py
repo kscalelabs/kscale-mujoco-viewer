@@ -29,6 +29,33 @@ class ScalarPlot(QWidget):
 
         self._curves: Dict[str, pg.PlotDataItem] = {}
         self._buffers: Dict[str, deque[Tuple[float, float]]] = {}
+        
+        # Color palette for different curves - using a mix of vibrant and distinguishable colors
+        self._color_palette = [
+            "#FF6B6B",  # Red
+            "#4ECDC4",  # Teal
+            "#45B7D1",  # Blue
+            "#96CEB4",  # Light Green
+            "#FFEAA7",  # Yellow
+            "#DDA0DD",  # Plum
+            "#FF8C42",  # Orange
+            "#98D8C8",  # Mint
+            "#F7DC6F",  # Light Yellow
+            "#BB8FCE",  # Light Purple
+            "#85C1E9",  # Light Blue
+            "#F8C471",  # Light Orange
+            "#82E0AA",  # Light Green
+            "#F1948A",  # Light Red
+            "#AED6F1",  # Very Light Blue
+            "#D7DBDD",  # Light Gray
+        ]
+        self._color_index = 0
+
+    def _get_next_color(self) -> str:
+        """Get the next color from the palette, cycling if needed."""
+        color = self._color_palette[self._color_index % len(self._color_palette)]
+        self._color_index += 1
+        return color
 
     def update_data(self, t: float, scalars: Dict[str, float]) -> None:
         """Append one sample per *scalars* key and refresh the plot."""
@@ -37,8 +64,11 @@ class ScalarPlot(QWidget):
                 if len(self._curves) >= self._max_curves:
                     continue
                 self._buffers[name] = deque(maxlen=self._history)
+                
+                # Get a unique color for this curve
+                color = self._get_next_color()
                 self._curves[name] = self._plot.plot(
-                    pen=pg.mkPen(width=1), name=name
+                    pen=pg.mkPen(color=color, width=2), name=name
                 )
 
             self._buffers[name].append((t, val))
