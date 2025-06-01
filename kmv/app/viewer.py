@@ -116,8 +116,9 @@ class QtViewer(QMainWindow):
         return arr.reshape(img.height(), img.width(), 4)[..., :3]        # RGB
 
     # ---- new public API --------------------------------------------------
-    def push_mujoco_frame(self, frame: Frame) -> None:
+    def push_mujoco_frame(self, *, qpos: np.ndarray, qvel: np.ndarray, xfrc_applied: np.ndarray | None = None) -> None:
         """Append one physics frame (qpos/qvel) to the internal queue."""
+        frame = Frame(qpos=qpos, qvel=qvel, xfrc_applied=xfrc_applied)
         self._ringbuffer.push(frame)
 
     def push_scalar(self, t: float, scalars: dict[str, float]) -> None:
