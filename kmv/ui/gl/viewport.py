@@ -89,31 +89,17 @@ class GLViewport(QOpenGLWidget):
         inertia: bool,
     ) -> None:
         """
-        Enable/disable common visual features but stay compatible with
-        different MuJoCo versions:
-
+        Enable/disable common visual features for MuJoCo 3.x+.
+        
         * contact_force / contact_point / inertia  →  mjtVisFlag  (option.flags)
-        * shadow / reflection                      →  mjtRndFlag  (scene.flags)  in v3.x+
-                                                    →  mjtVisFlag              in older builds
+        * shadow / reflection                      →  mjtRndFlag  (scene.flags)
         """
-
-        def _set_flag(container, enum_cls, name: str, enabled: bool) -> None:
-            idx = getattr(enum_cls, name, None)
-            if idx is not None:
-                container[idx] = int(enabled)
-
-        vis = mujoco.mjtVisFlag
-        _set_flag(self.opt.flags, vis, "mjVIS_CONTACTFORCE", contact_force)
-        _set_flag(self.opt.flags, vis, "mjVIS_CONTACTPOINT", contact_point)
-        _set_flag(self.opt.flags, vis, "mjVIS_INERTIA",       inertia)
-
-        rnd = mujoco.mjtRndFlag
-        if hasattr(rnd, "mjRND_SHADOW"):
-            _set_flag(self.scene.flags, rnd, "mjRND_SHADOW",      shadow)
-            _set_flag(self.scene.flags, rnd, "mjRND_REFLECTION",  reflection)
-        else:                                  # fallback for older MuJoCo
-            _set_flag(self.opt.flags, vis, "mjVIS_SHADOW",     shadow)
-            _set_flag(self.opt.flags, vis, "mjVIS_REFLECTION", reflection)
+        # Set visualization flags directly (MuJoCo 3.x+ style)
+        self.scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = shadow
+        self.scene.flags[mujoco.mjtRndFlag.mjRND_REFLECTION] = reflection
+        self.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = contact_force
+        self.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = contact_point
+        self.opt.flags[mujoco.mjtVisFlag.mjVIS_INERTIA] = inertia
 
     def _pick_body(self, x: float, y: float) -> int:
         """
