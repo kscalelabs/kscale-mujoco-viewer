@@ -18,34 +18,36 @@ class SimulationStatusBar:
         self._status_bar = status_bar
         self._fps_timer = time.time()
         self._frame_ctr = 0
-        self._last_sim_time: float = 0.0
-        self._last_absolute_sim_time: float = 0.0
+        self._last_fps = 0  # Store the last calculated FPS
         
     def update_fps_and_timing(
         self,
         ringbuffer: RingBuffer[Frame] | None = None,
-        sim_time: float | None = None,
-        absolute_sim_time: float | None = None,
+        sim_time: float = 0.0,
+        absolute_sim_time: float = 0.0,
     ) -> None:
         """Update the status bar with FPS and timing information."""
         self._frame_ctr += 1
         
-        # Update timing values if provided
-        if sim_time is not None:
-            self._last_sim_time = sim_time
-        if absolute_sim_time is not None:
-            self._last_absolute_sim_time = absolute_sim_time
-        
-        # Update status bar every second
-        if time.time() - self._fps_timer >= 1.0:
-            self._update_status_message(ringbuffer)
+        # Calculate FPS every second
+        current_time = time.time()
+        if current_time - self._fps_timer >= 1.0:
+            self._last_fps = self._frame_ctr
             self._frame_ctr = 0
-            self._fps_timer = time.time()
+            self._fps_timer = current_time
+        
+        # Update timing display every iteration (real-time)
+        self._update_status_message(ringbuffer, sim_time, absolute_sim_time)
     
-    def _update_status_message(self, ringbuffer: RingBuffer[Frame] | None = None) -> None:
+    def _update_status_message(
+        self, 
+        ringbuffer: RingBuffer[Frame] | None = None,
+        sim_time: float = 0.0,
+        absolute_sim_time: float = 0.0,
+    ) -> None:
         """Construct and display the status message."""
-        # Base FPS information
-        fps_msg = f"{self._frame_ctr} FPS"
+        # Base FPS information (use last calculated FPS)
+        fps_msg = f"{self._last_fps} FPS"
         
         # Add ringbuffer statistics if available
         if ringbuffer is not None:
@@ -55,20 +57,12 @@ class SimulationStatusBar:
             backlog = len(ringbuffer)
             fps_msg += f"   P:{pushes}  C:{pops}  Δ:{dropped}  len:{backlog}"
         
-        # Add timing information
-        timing_msg = f"   sim_t:{self._last_sim_time:.3f}   abs_t:{self._last_absolute_sim_time:.3f}"
+        # Add timing information (updates every iteration)
+        timing_msg = f"   sim_t:{sim_time:.3f}   abs_t:{absolute_sim_time:.3f}"
         
         # Combine all information
         full_message = fps_msg + timing_msg
         self._status_bar.showMessage(full_message)
-    
-    def set_sim_time(self, sim_time: float) -> None:
-        """Update the current simulation time."""
-        self._last_sim_time = sim_time
-    
-    def set_absolute_sim_time(self, absolute_sim_time: float) -> None:
-        """Update the current absolute simulation time."""
-        self._last_absolute_sim_time = absolute_sim_time
     
     def show_message(self, message: str, timeout: int = 0) -> None:
         """Show a custom message in the status bar."""

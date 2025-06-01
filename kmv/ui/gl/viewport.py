@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 import time
-from typing import Callable, TYPE_CHECKING
+from typing import Callable
 
 import mujoco
 import numpy as np
@@ -12,9 +12,6 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from kmv.core.buffer import RingBuffer
 from kmv.core.types import Frame
-
-if TYPE_CHECKING:
-    from kmv.ui.chrome.statusbar import SimulationStatusBar
 
 
 _fmt = QSurfaceFormat()
@@ -62,7 +59,6 @@ class GLViewport(QOpenGLWidget):
 
         self._ringbuffer = ringbuffer
         self._callback: Callable | None = None
-        self._status_bar_manager: SimulationStatusBar | None = None
 
         self._mouse_btn: int | None = None
         self._last_x  = 0.0
@@ -82,10 +78,6 @@ class GLViewport(QOpenGLWidget):
 
     def set_mjdata(self, data: mujoco.MjData) -> None:
         self._data_ptr = data
-
-    def set_status_bar_manager(self, status_bar_manager: SimulationStatusBar) -> None:
-        """Set the status bar manager for updating status information."""
-        self._status_bar_manager = status_bar_manager
 
     def _set_vis_flags(
         self,
@@ -200,14 +192,6 @@ class GLViewport(QOpenGLWidget):
             self._callback(self.model, self._data_ptr, self.scene)
 
         mujoco.mjr_render(rect, self.scene, self.ctx)
-
-        # Update status bar through the manager if available
-        if self._status_bar_manager is not None:
-            sim_time = float(self._data_ptr.time)
-            self._status_bar_manager.update_fps_and_timing(
-                ringbuffer=self._ringbuffer,
-                sim_time=sim_time,
-            )
 
     def mousePressEvent(self, ev):                         # type: ignore[override]
         """Start camera drag or (Ctrl + button) perturb drag."""

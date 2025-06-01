@@ -84,9 +84,6 @@ class QtViewer(QMainWindow):
         self._last_sim_time: float = 0.0
         self.absolute_sim_time: float = 0.0  # Public attribute as requested
 
-        # Connect viewport to status bar manager
-        self._viewport.set_status_bar_manager(self._status_bar_manager)
-
         if mode == "window":
             self.show()
 
@@ -146,10 +143,8 @@ class QtViewer(QMainWindow):
         frame = Frame(qpos=qpos, qvel=qvel, xfrc_applied=xfrc_applied)
         self._ringbuffer.push(frame)
         
-        # Update timing information
-        absolute_time = self._calculate_absolute_time(sim_time)
-        self._status_bar_manager.set_sim_time(sim_time)
-        self._status_bar_manager.set_absolute_sim_time(absolute_time)
+        # Update absolute time calculation - viewer is the single source of truth
+        self._calculate_absolute_time(sim_time)
 
     def push_scalar(self, sim_time: float, scalars: dict[str, float]) -> None:
         """Stream scalar values for live plotting."""
@@ -164,6 +159,15 @@ class QtViewer(QMainWindow):
         self._viewport.set_callback(callback)
         self._viewport.update()
         self.app.processEvents()
+        
+        # Update status bar with current timing information after each render
+        sim_time = float(self._data.time)
+        self._status_bar_manager.update_fps_and_timing(
+            ringbuffer=self._ringbuffer,
+            sim_time=sim_time,
+            absolute_sim_time=self.absolute_sim_time,
+        )
+        
         return self.data.xfrc_applied.copy()
 
     # ----------------------------------------------------------------------
