@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 from kmv.ui.gl.viewport import GLViewport
 from kmv.ui.plotting.plots import ScalarPlot
 from kmv.core.types import RenderMode, Frame
-from kmv.core.ring import Ring
+from kmv.core.buffer import RingBuffer
 
 
 Callback = Callable[[mujoco.MjModel, mujoco.MjData, mujoco.MjvScene], None]
@@ -37,7 +37,6 @@ class QtViewer(QMainWindow):
         model: mujoco.MjModel,
         data: mujoco.MjData | None = None,
         *,
-        ring: Ring[Frame] | None = None,
         mode: RenderMode = "window",
         width: int = 900,
         height: int = 550,
@@ -55,12 +54,12 @@ class QtViewer(QMainWindow):
         self.resize(width, height)
 
         self._data = data or mujoco.MjData(model)
-        self._ring = ring
+        self._ringbuffer: RingBuffer[Frame] = RingBuffer(size=8)        # fixed, viewer-private
 
         self._viewport = GLViewport(
             model,
             self._data,
-            ring=self._ring,
+            ringbuffer=self._ringbuffer,
             shadow=shadow,
             reflection=reflection,
             contact_force=contact_force,
@@ -116,14 +115,26 @@ class QtViewer(QMainWindow):
         arr = img.toImage().convertToFormat(4).constBits().asarray(img.height()*img.width()*4)
         return arr.reshape(img.height(), img.width(), 4)[..., :3]        # RGB
 
-    def push_scalars(self, t: float, scalars: dict[str, float]) -> None:
-        """Stream one time-stamp worth of scalars to the live plot."""
+    # ---- new public API --------------------------------------------------
+    def push_mujoco_frame(self, frame: Frame) -> None:
+        """Append one physics frame (qpos/qvel) to the internal queue."""
+        self._ringbuffer.push(frame)
+
+    def push_scalar(self, t: float, scalars: dict[str, float]) -> None:
+        """Stream scalar values for live plotting."""
         self._scalar_plot.update_data(t, scalars)
 
-    def feed(self, frame: Frame) -> None:
-        """Push a new physics frame into the ring (cheap, non-blocking)."""
-        if self._ring is not None:
-            self._ring.push(frame)
+    def update(self, callback: Callback | None = None) -> np.ndarray:
+        """
+        Redraw the scene, pump the Qt event loop, and return the current
+        `xfrc_applied` array so the RL loop can copy it back into the sim.
+        """
+        self._viewport.set_callback(callback)
+        self._viewport.update()
+        self.app.processEvents()
+        return self.data.xfrc_applied.copy()
+
+    # ----------------------------------------------------------------------
 
     def keyPressEvent(self, ev):                           # type: ignore[override]
         if ev.key() == Qt.Key_R:

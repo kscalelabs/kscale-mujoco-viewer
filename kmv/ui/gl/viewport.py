@@ -1,4 +1,3 @@
-
 """Tiny QOpenGLWidget that asks MuJoCo to draw the current world."""
 
 from __future__ import annotations
@@ -11,7 +10,7 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
-from kmv.core.ring import Ring
+from kmv.core.buffer import RingBuffer
 from kmv.core.types import Frame
 
 
@@ -33,7 +32,7 @@ class GLViewport(QOpenGLWidget):
         model: mujoco.MjModel,
         data: mujoco.MjData,
         *,
-        ring: Ring[Frame] | None = None,
+        ringbuffer: RingBuffer[Frame] | None = None,
         shadow: bool = False,
         reflection: bool = False,
         contact_force: bool = False,
@@ -58,7 +57,7 @@ class GLViewport(QOpenGLWidget):
             inertia=inertia,
         )
 
-        self._ring = ring
+        self._ringbuffer = ringbuffer
         self._callback: Callable | None = None
         self._fps_timer = time.time()
         self._frame_ctr = 0
@@ -163,8 +162,8 @@ class GLViewport(QOpenGLWidget):
         self.ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_150)
 
     def paintGL(self) -> None:
-        if self._ring is not None:
-            frame = self._ring.latest()
+        if self._ringbuffer is not None:
+            frame = self._ringbuffer.latest()
             if frame is not None:
                 self._data_ptr.qpos[:] = frame.qpos
                 self._data_ptr.qvel[:] = frame.qvel
@@ -198,11 +197,11 @@ class GLViewport(QOpenGLWidget):
 
         self._frame_ctr += 1
         if time.time() - self._fps_timer >= 1.0:
-            if self._ring is not None:
-                pushes = self._ring.push_count
-                pops   = self._ring.pop_count
+            if self._ringbuffer is not None:
+                pushes = self._ringbuffer.push_count
+                pops   = self._ringbuffer.pop_count
                 dropped = pushes - pops
-                backlog = len(self._ring)
+                backlog = len(self._ringbuffer)
                 msg = (
                     f"{self._frame_ctr} FPS   "
                     f"P:{pushes}  C:{pops}  Δ:{dropped}  len:{backlog}"

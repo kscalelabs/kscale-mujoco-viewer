@@ -14,7 +14,7 @@ from typing import Generic, TypeVar
 T = TypeVar("T")
 
 
-class Ring(Generic[T]):
+class RingBuffer(Generic[T]):
     """Single-producer / single-consumer ring buffer."""
 
     def __init__(self, size: int = 8) -> None:
