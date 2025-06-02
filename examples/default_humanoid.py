@@ -28,7 +28,7 @@ def main() -> None:
     logger.info("Loading model: %s", xml_path)
 
     # ---------- compile model ----------------------------------------- #
-    physics_dt = 0.002
+    physics_dt = 0.02
     model = mujoco.MjModel.from_xml_path(str(xml_path))
     model.opt.timestep = physics_dt
     data  = mujoco.MjData(model)
@@ -83,13 +83,17 @@ def main() -> None:
             viewer.push_plot_metrics(
                 {
                     "qpos0": float(data.qpos[0]),
-                    "qpos1": float(data.qpos[1]),
-                    "qpos2": float(data.qpos[2]),
-                    "qvel0": float(data.qvel[0]),
-                    "qvel1": float(data.qvel[1]),
-                    "qvel2": float(data.qvel[2]),
+                    # "qpos1": float(data.qpos[1]),
+                    # "qpos2": float(data.qpos[2]),
+                    # "qvel0": float(data.qvel[0]),
+                    # "qvel1": float(data.qvel[1]),
+                    # "qvel2": float(data.qvel[2]),
                 }
             )
+
+            # SIM counter - confirms producer is running at 50 Hz
+            if sim_it % 500 == 0:
+                print(f"[SIM] it={sim_it:6} t={data.time:6.2f}")
 
             # ------------------------------------------------------------------
             # (6) sleep so that sim-time == wall-time

@@ -11,7 +11,7 @@ reader) without pulling in Qt or MuJoCo.
 from __future__ import annotations
 
 import ctypes
-from multiprocessing import Lock, Value, shared_memory
+from multiprocessing import Lock, shared_memory
 from typing import Tuple
 
 import numpy as np
@@ -49,9 +49,11 @@ class SharedArrayRing:
     Notes
     -----
     • Overwrites the oldest frame on overflow (perfectly fine for a viewer).  
-    • Uses a tiny `Lock` to protect the producer’s index update; reader is
+    • Uses a tiny `Lock` to protect the producer's index update; reader is
       wait-free except for a single atomic read.
     """
+
+    HEADER_BYTES = ctypes.sizeof(ctypes.c_uint32)   # 4
 
     # ───────────────────────────────────────────────────────────────────── #
 
@@ -70,20 +72,26 @@ class SharedArrayRing:
         self.capacity   = capacity
         self.elem_size  = int(np.prod(shape))
         self._bytes     = self.elem_size * _DTYPE().nbytes
-        shm_bytes       = capacity * self._bytes
+        shm_bytes       = self.HEADER_BYTES + capacity * self._bytes
 
         # (1) allocate or attach ------------------------------------------------
         self._shm = shared_memory.SharedMemory(
             name=name, create=create, size=shm_bytes
         )
 
-        # (2) expose as NumPy 2-D view  [capacity, *shape] ----------------------
+        # 1) map the first 4 bytes to a *shared* uint32 cursor
+        self._idx = ctypes.c_uint32.from_buffer(self._shm.buf, 0)
+
+        # 2) the actual ring starts right after the header
+        buf_start = self.HEADER_BYTES
         self._buf = np.ndarray(
-            (capacity, self.elem_size), dtype=_DTYPE, buffer=self._shm.buf
+            (capacity, self.elem_size), 
+            dtype=_DTYPE, 
+            buffer=self._shm.buf,
+            offset=buf_start,
         )
 
-        # (3) simple cursor + lock ---------------------------------------------
-        self._idx  = Value(ctypes.c_uint32, 0)
+        # (3) simple lock ---------------------------------------------
         self._lock = Lock()
 
     # ------------------------------------------------------------------ #
@@ -97,8 +105,8 @@ class SharedArrayRing:
 
         with self._lock:
             i = (self._idx.value + 1) & (self.capacity - 1)
-            self._idx.value = i
-        self._buf[i, :] = arr.ravel()          # memory-copy
+            self._buf[i, :] = arr.ravel()   # ① copy first
+            self._idx.value = i             # ② publish index *after* data
 
     # ------------------------------------------------------------------ #
     #  Consumer API
