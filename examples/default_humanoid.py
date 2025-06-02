@@ -83,11 +83,11 @@ def main() -> None:
             viewer.push_plot_metrics(
                 {
                     "qpos0": float(data.qpos[0]),
-                    # "qpos1": float(data.qpos[1]),
-                    # "qpos2": float(data.qpos[2]),
-                    # "qvel0": float(data.qvel[0]),
-                    # "qvel1": float(data.qvel[1]),
-                    # "qvel2": float(data.qvel[2]),
+                    "qpos1": float(data.qpos[1]),
+                    "qpos2": float(data.qpos[2]),
+                    "qvel0": float(data.qvel[0]),
+                    "qvel1": float(data.qvel[1]),
+                    "qvel2": float(data.qvel[2]),
                 }
             )
 
