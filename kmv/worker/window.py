@@ -56,9 +56,17 @@ class ViewerWindow(QMainWindow):
         super().__init__(parent)
         opts = view_opts or {}
 
-        width  = int(opts.get("width", 900))
-        height = int(opts.get("height", 550))
-        enable_plots = bool(opts.get("enable_plots", True))
+        # ── generic opts -------------------------------------------------- #
+        width         = int(opts.get("width", 900))
+        height        = int(opts.get("height", 550))
+        enable_plots  = bool(opts.get("enable_plots", True))
+
+        # ── visual flags -------------------------------------------------- #
+        shadow        = bool(opts.get("shadow",        False))
+        reflection    = bool(opts.get("reflection",    False))
+        contact_force = bool(opts.get("contact_force", False))
+        contact_point = bool(opts.get("contact_point", False))
+        inertia       = bool(opts.get("inertia",       False))
 
         self.resize(width, height)
         self.setWindowTitle("KMV Viewer")
@@ -71,7 +79,16 @@ class ViewerWindow(QMainWindow):
         self._plot_q     = plot_q
 
         # -- central OpenGL viewport ----------------------------------------- #
-        self._viewport = GLViewport(model, data, parent=self)
+        self._viewport = GLViewport(
+            model,
+            data,
+            shadow        = shadow,
+            reflection    = reflection,
+            contact_force = contact_force,
+            contact_point = contact_point,
+            inertia       = inertia,
+            parent        = self,
+        )
         self.setCentralWidget(self._viewport)
 
         # -- status bar ------------------------------------------------------- #
@@ -93,6 +110,17 @@ class ViewerWindow(QMainWindow):
         self.addDockWidget(Qt.RightDockWidgetArea, table_dock)
 
         self.show()
+
+        # ── apply *initial camera* parameters (optional) ------------------ #
+        cam = self._viewport.cam
+        if "camera_distance"  in opts: cam.distance  = float(opts["camera_distance"])
+        if "camera_azimuth"   in opts: cam.azimuth   = float(opts["camera_azimuth"])
+        if "camera_elevation" in opts: cam.elevation = float(opts["camera_elevation"])
+        if "camera_lookat"    in opts:
+            cam.lookat[:] = np.asarray(opts["camera_lookat"], dtype=np.float64)
+        if opts.get("track_body_id") is not None:
+            cam.trackbodyid = int(opts["track_body_id"])
+            cam.type        = mujoco.mjtCamera.mjCAMERA_TRACKING
 
         # ── self-computed performance metrics ──────────────────────────────
         self._fps_timer    = time.perf_counter()
