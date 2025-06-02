@@ -16,9 +16,19 @@ class SimulationStatusBar:
     
     def __init__(self, status_bar: QStatusBar) -> None:
         self._status_bar = status_bar
+        # ── FPS bookkeeping ────────────────────────────────────────────
         self._fps_timer = time.time()
         self._frame_ctr = 0
         self._last_fps = 0  # Store the last calculated FPS
+
+        # ── make the whole bar monospaced so widths don't vary ──────────
+        # Works on all platforms that ship 'Courier New' or fall back to
+        # the default monospace.  Feel free to replace with your favourite.
+        status_bar.setStyleSheet(
+            "QStatusBar { font-family: 'Courier New', monospace; }"
+        )
+        # ── real-time reference – first paint = t₀ ─────────────────────
+        self._t0_real = self._fps_timer
         
     def update_fps_and_timing(
         self,
@@ -46,8 +56,8 @@ class SimulationStatusBar:
         absolute_sim_time: float = 0.0,
     ) -> None:
         """Construct and display the status message."""
-        # Base FPS information (use last calculated FPS)
-        fps_msg = f"{self._last_fps} FPS"
+        # Base FPS information (fixed width: 4-digit int)
+        fps_msg = f"{self._last_fps:4d} FPS"
         
         # Add ringbuffer statistics if available
         if ringbuffer is not None:
@@ -55,10 +65,20 @@ class SimulationStatusBar:
             pops = ringbuffer.pop_count
             dropped = pushes - pops
             backlog = len(ringbuffer)
-            fps_msg += f"   P:{pushes}  C:{pops}  Δ:{dropped}  len:{backlog}"
+            fps_msg += (
+                f"   P:{pushes:6d}"
+                f"  C:{pops:6d}"
+                f"  Δ:{dropped:6d}"
+                f"  len:{backlog:3d}"
+            )
         
         # Add timing information (updates every iteration)
-        timing_msg = f"   sim_t:{sim_time:.3f}   abs_t:{absolute_sim_time:.3f}"
+        real_elapsed = time.time() - self._t0_real
+        timing_msg = (
+            f"   sim_t:{sim_time:>9.3f}"
+            f"   abs_t:{absolute_sim_time:>9.3f}"
+            f"   real_t:{real_elapsed:>9.3f}"
+        )
         
         # Combine all information
         full_message = fps_msg + timing_msg

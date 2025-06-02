@@ -13,11 +13,13 @@ from PySide6.QtWidgets import (
     QStatusBar,
     QWidget,
     QDockWidget,
+    QTableView,
 )
 
 from kmv.ui.gl.viewport import GLViewport
 from kmv.ui.plotting.plots import ScalarPlot
 from kmv.ui.chrome.statusbar import SimulationStatusBar
+from kmv.ui.chrome.telemetry import TelemetryModel
 from kmv.core.types import RenderMode, Frame
 from kmv.core.buffer import RingBuffer
 
@@ -52,6 +54,10 @@ class QtViewer(QMainWindow):
         self.app = QApplication.instance() or QApplication(sys.argv)
         super().__init__()
 
+        # Add callback attributes
+        self.before_paint_callback: Callable[[], None] | None = None
+        self.on_force: Callable[[np.ndarray], None] | None = None
+
         self.setWindowTitle("K-Scale MuJoCo Viewer")
         self.resize(width, height)
 
@@ -67,6 +73,7 @@ class QtViewer(QMainWindow):
             contact_force=contact_force,
             contact_point=contact_point,
             inertia=inertia,
+            parent=self,
         )
         self.setCentralWidget(self._viewport)
 
@@ -86,6 +93,19 @@ class QtViewer(QMainWindow):
             self.addDockWidget(Qt.BottomDockWidgetArea, dock)
         else:
             self._scalar_plot = None
+
+        # Telemetry table view
+        self._telemetry_model = TelemetryModel(self)
+        table = QTableView()
+        table.setModel(self._telemetry_model)
+        table.horizontalHeader().setStretchLastSection(True)
+        table.verticalHeader().hide()
+        table.setSelectionMode(QTableView.NoSelection)
+        table.setEditTriggers(QTableView.NoEditTriggers)
+
+        telemetry_dock = QDockWidget("Telemetry", self)
+        telemetry_dock.setWidget(table)
+        self.addDockWidget(Qt.RightDockWidgetArea, telemetry_dock)
 
         # Time tracking for absolute time calculation
         self._time_offset: float = 0.0
@@ -160,6 +180,10 @@ class QtViewer(QMainWindow):
         if self._enable_plots and self._scalar_plot is not None:
             absolute_time = self._calculate_absolute_time(sim_time)
             self._scalar_plot.update_data(absolute_time, scalars)
+
+    def update_telemetry(self, metrics: dict[str, float]) -> None:
+        """Update the telemetry table with new metrics."""
+        self._telemetry_model.update(metrics)
 
     def update(self, callback: Callback | None = None) -> np.ndarray:
         """

@@ -43,6 +43,7 @@ class GLViewport(QOpenGLWidget):
         super().__init__(parent)
 
         self.model, self._data_ptr = model, data
+        self._qt_viewer_parent = parent  # Store reference to QtViewer
         self.scene = mujoco.MjvScene(model, maxgeom=20_000)
         self.cam   = mujoco.MjvCamera()
         self.opt   = mujoco.MjvOption()
@@ -65,10 +66,10 @@ class GLViewport(QOpenGLWidget):
         self._last_y  = 0.0
         self._sel_body: int = -1
 
-        self._timer = QTimer(self)
-        self._timer.setInterval(16)
-        self._timer.timeout.connect(self.update)
-        self._timer.start()
+        # self._timer = QTimer(self)
+        # self._timer.setInterval(16)
+        # self._timer.timeout.connect(self.update)
+        # self._timer.start()
 
     def set_callback(
         self,
@@ -146,6 +147,10 @@ class GLViewport(QOpenGLWidget):
         self.ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_150)
 
     def paintGL(self) -> None:
+        # Call before_paint_callback if it exists in the parent QtViewer
+        if (self._qt_viewer_parent and self._qt_viewer_parent.before_paint_callback):
+            self._qt_viewer_parent.before_paint_callback()
+            
         if self._ringbuffer is not None:
             frame = self._ringbuffer.latest()
             if frame is not None:
@@ -227,9 +232,19 @@ class GLViewport(QOpenGLWidget):
 
     def mouseReleaseEvent(self, _ev):                       # type: ignore[override]
         """Stop drag (camera or perturb)."""
+        # Capture the mouse button before resetting it
+        released_button = self._mouse_btn
+        
         self.pert.active = 0
         self._mouse_btn  = None
         self.update()
+        
+        # Call on_force callback if right mouse button was released
+        if (self._qt_viewer_parent and 
+            hasattr(self._qt_viewer_parent, 'on_force') and 
+            self._qt_viewer_parent.on_force and 
+            released_button == Qt.RightButton):
+            self._qt_viewer_parent.on_force(self._data_ptr.xfrc_applied.copy())
 
     def mouseMoveEvent(self, ev):                          # type: ignore[override]
         x, y = ev.position().x(), ev.position().y()
