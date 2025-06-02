@@ -60,6 +60,13 @@ def run_worker(
                           view_opts=view_opts)
     window._ctrl_send = ctrl_send      # expose pipe to viewport for forces
 
+    # ── let the parent know the GUI is ready --------------------------- #
+    try:
+        ctrl_send.send(("ready", None))
+    except (BrokenPipeError, EOFError):
+        # parent already quit – just keep going so Qt can shut down cleanly
+        pass
+
     # ---- 4.  Graphics timer (≈60 Hz) -------------------------------- #
     gfx_timer = QTimer()
     gfx_timer.setInterval(16)

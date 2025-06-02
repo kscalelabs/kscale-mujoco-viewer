@@ -21,6 +21,8 @@ from typing import Any, Mapping, Sequence, Literal, Callable
 import mujoco
 import numpy as np
 
+import time
+
 import multiprocessing as mp
 
 from kmv.core.types import RenderMode
@@ -110,6 +112,19 @@ class Viewer:
             daemon=True,
         )
         self._proc.start()
+
+        # ── wait for the GUI to say "ready" ------------------------------ #
+        _t0 = time.perf_counter()
+        while True:
+            if self._ctrl.poll():               # message waiting
+                tag, _ = self._ctrl.recv()
+                if tag == "ready":
+                    break                       # handshake complete
+                if tag == "shutdown":           # early exit in worker
+                    raise RuntimeError("Viewer process terminated during start-up")
+            if (time.perf_counter() - _t0) > 5.0:
+                raise TimeoutError("Viewer did not initialise within 5 s")
+            time.sleep(0.01)                    # keep the loop cheap
 
     # ------------------------------------------------------------------ #
     #  Producer helpers – called from sim loop
