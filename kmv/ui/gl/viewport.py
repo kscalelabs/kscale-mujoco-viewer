@@ -246,6 +246,13 @@ class GLViewport(QOpenGLWidget):
             released_button == Qt.RightButton):
             self._qt_viewer_parent.on_force(self._data_ptr.xfrc_applied.copy())
 
+        # NEW – forward xfrc_applied to parent process
+        if (self._qt_viewer_parent and
+            hasattr(self._qt_viewer_parent, "_ctrl_send")):
+            self._qt_viewer_parent._ctrl_send.send(
+                ("forces", self._data_ptr.xfrc_applied.copy())
+            )
+
     def mouseMoveEvent(self, ev):                          # type: ignore[override]
         x, y = ev.position().x(), ev.position().y()
         dx, dy = x - self._last_x, y - self._last_y
