@@ -1,255 +1,172 @@
-"""High-level MuJoCo viewer (interactive Qt window or off-screen)."""
+# kmv/app/viewer.py
+"""
+`Viewer` – the *only* class your RL / control loop talks to.
+
+Responsibilities
+----------------
+* Serialise a compiled `mjModel` to a temp .mjb file.
+* Allocate one shared-memory ring per data stream (qpos, qvel, …).
+* Create a control pipe and a bounded metrics queue.
+* Spawn the GUI process (`worker.entrypoint.run_worker`) with the above handles.
+* Provide ergonomic push / poll helpers for the parent process.
+"""
 
 from __future__ import annotations
-import sys
-from typing import Callable
+
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Mapping, Sequence
 
 import mujoco
 import numpy as np
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QApplication,
-    QMainWindow,
-    QStatusBar,
-    QWidget,
-    QDockWidget,
-    QTableView,
-)
 
-from kmv.ui.gl.viewport import GLViewport
-from kmv.ui.plotting.plots import ScalarPlot
-from kmv.ui.chrome.statusbar import SimulationStatusBar
-from kmv.ui.chrome.telemetry import TelemetryModel
-from kmv.core.types import RenderMode, Frame
-from kmv.core.buffer import RingBuffer
+import multiprocessing as mp
+
+from kmv.core import types as ct
+from kmv.core.buffer import RingBuffer          # used for off-screen mode
+from kmv.core import schema                     # declares default streams
+from kmv.ipc.state import SharedArrayRing
+from kmv.ipc.control import ControlPipe, make_metrics_queue
+from kmv.worker.entrypoint import run_worker
 
 
-Callback = Callable[[mujoco.MjModel, mujoco.MjData, mujoco.MjvScene], None]
+# --------------------------------------------------------------------------- #
+#  Helpers
+# --------------------------------------------------------------------------- #
+
+def _compile_model_to_mjb(model: mujoco.MjModel) -> Path:
+    """Write `model` to a temp .mjb file and return the path."""
+    tmp = tempfile.NamedTemporaryFile(suffix=".mjb", delete=False)
+    mujoco.mj_saveModel(model, tmp.name, None)
+    tmp.close()
+    return Path(tmp.name)
 
 
-class QtViewer(QMainWindow):
+def _build_shm_rings(model: mujoco.MjModel) -> dict[str, SharedArrayRing]:
+    """Create rings for every stream defined in `core.schema`."""
+    rings: dict[str, SharedArrayRing] = {}
+    for name, shape in schema.default_streams(model).items():
+        rings[name] = SharedArrayRing(create=True, shape=shape)
+    return rings
+
+
+# --------------------------------------------------------------------------- #
+#  Public class
+# --------------------------------------------------------------------------- #
+
+class Viewer:
     """
-    Interactive on-screen viewer.
+    High-level out-of-process viewer.
 
-    Extra keyword-args correspond 1-to-1 with the flags `get_viewer()` passes
-    in (shadow, reflection, …) so the RL loop doesn't need to change.
+    Usage
+    -----
+    >>> viewer = Viewer(mj_model)
+    >>> while training:
+    ...     mujoco.mj_step(model, data)
+    ...     viewer.push_state(data.qpos, data.qvel, sim_time=data.time)
+    ...     forces = viewer.poll_forces()
     """
+
+    # ------------------------------------------------------------------ #
 
     def __init__(
         self,
-        model: mujoco.MjModel,
-        data: mujoco.MjData | None = None,
+        mj_model: mujoco.MjModel,
         *,
-        mode: RenderMode = "window",
-        width: int = 900,
-        height: int = 550,
-        shadow: bool = False,
-        reflection: bool = False,
-        contact_force: bool = False,
-        contact_point: bool = False,
-        inertia: bool = False,
-        enable_plots: bool = True,
-        **_ignored,
+        mode: ct.RenderMode = "window",
+        **view_opts,
     ) -> None:
-        self.app = QApplication.instance() or QApplication(sys.argv)
-        super().__init__()
+        if mode not in ("window", "offscreen"):
+            raise ValueError(f"unknown render mode {mode!r}")
 
-        # Add callback attributes
-        self.before_paint_callback: Callable[[], None] | None = None
-        self.on_force: Callable[[np.ndarray], None] | None = None
+        self._mode = mode
+        self._tmp_mjb_path = _compile_model_to_mjb(mj_model)
 
-        self.setWindowTitle("K-Scale MuJoCo Viewer")
-        self.resize(width, height)
+        # ---------- shared memory for bulk state ----------------------- #
+        self._rings = _build_shm_rings(mj_model)
+        shm_cfg = {
+            name: {"name": ring.name, "shape": ring.shape}
+            for name, ring in self._rings.items()
+        }
 
-        self._data = data or mujoco.MjData(model)
-        self._ringbuffer: RingBuffer[Frame] = RingBuffer(size=8)        # fixed, viewer-private
+        # ---------- control & metrics IPC ------------------------------ #
+        self._ctrl = ControlPipe()
+        ctx        = mp.get_context("spawn")
+        self._metrics_q = make_metrics_queue()
 
-        self._viewport = GLViewport(
-            model,
-            self._data,
-            ringbuffer=self._ringbuffer,
-            shadow=shadow,
-            reflection=reflection,
-            contact_force=contact_force,
-            contact_point=contact_point,
-            inertia=inertia,
-            parent=self,
+        # ---------- spawn GUI process ---------------------------------- #
+        self._proc = ctx.Process(
+            target=run_worker,
+            args=(
+                str(self._tmp_mjb_path),
+                shm_cfg,
+                self._ctrl.sender(),       # write-only end to child
+                self._metrics_q,
+                view_opts,                 # dict with width, shadow…
+            ),
+            daemon=True,
         )
-        self.setCentralWidget(self._viewport)
+        self._proc.start()
 
-        # status bar for FPS readout and timing information
-        status_bar = QStatusBar(self)
-        self.setStatusBar(status_bar)
-        self._status_bar_manager = SimulationStatusBar(status_bar)
+    # ------------------------------------------------------------------ #
+    #  Producer helpers – called from sim loop
+    # ------------------------------------------------------------------ #
 
-        # Store enable_plots for later use
-        self._enable_plots = enable_plots
-        
-        # Only create and add scalar plot widget if plots are enabled
-        if self._enable_plots:
-            self._scalar_plot = ScalarPlot(history=600, max_curves=24)
-            dock = QDockWidget("Scalars", self)
-            dock.setWidget(self._scalar_plot)
-            self.addDockWidget(Qt.BottomDockWidgetArea, dock)
-        else:
-            self._scalar_plot = None
-
-        # Telemetry table view
-        self._telemetry_model = TelemetryModel(self)
-        table = QTableView()
-        table.setModel(self._telemetry_model)
-        table.horizontalHeader().setStretchLastSection(True)
-        table.verticalHeader().hide()
-        table.setSelectionMode(QTableView.NoSelection)
-        table.setEditTriggers(QTableView.NoEditTriggers)
-
-        telemetry_dock = QDockWidget("Telemetry", self)
-        telemetry_dock.setWidget(table)
-        self.addDockWidget(Qt.RightDockWidgetArea, telemetry_dock)
-
-        # Time tracking for absolute time calculation
-        self._time_offset: float = 0.0
-        self._last_sim_time: float = 0.0
-        self.absolute_sim_time: float = 0.0  # Public attribute as requested
-
-        if mode == "window":
-            self.show()
-
-    @property
-    def model(self) -> mujoco.MjModel:
-        return self._viewport.model
-
-    @property
-    def data(self) -> mujoco.MjData:
-        return self._data
-
-    @property
-    def cam(self) -> mujoco.MjvCamera:
-        return self._viewport.cam
-
-    @property
-    def scn(self) -> mujoco.MjvScene:
-        return self._viewport.scene
-
-    @property
-    def vopt(self) -> mujoco.MjvOption:
-        return self._viewport.opt
-
-    def set_mjdata(self, data: mujoco.MjData) -> None:
-        self._data = data
-        self._viewport.set_mjdata(data)
-
-    def render(self, callback: Callback | None = None) -> None:
-        self._viewport.set_callback(callback)
-        self._viewport.update()
-        self.app.processEvents()
-
-    def read_pixels(self, callback: Callback | None = None) -> np.ndarray:
-        self._viewport.set_callback(callback)
-        self._viewport.makeCurrent()
-        img = self._viewport.grabFramebuffer()
-        arr = img.toImage().convertToFormat(4).constBits().asarray(img.height()*img.width()*4)
-        return arr.reshape(img.height(), img.width(), 4)[..., :3]        # RGB
-
-    def _calculate_absolute_time(self, sim_time: float) -> float:
-        """Calculate absolute time, handling resets by maintaining an offset."""
-        if sim_time < self._last_sim_time - 1e-9:  # detect reset
-            self._time_offset += self._last_sim_time
-        self._last_sim_time = sim_time
-        self.absolute_sim_time = self._time_offset + sim_time
-        return self.absolute_sim_time
-
-    def push_mujoco_frame(
-        self, 
-        *, 
-        qpos: np.ndarray, 
-        qvel: np.ndarray, 
-        sim_time: float,
-        xfrc_applied: np.ndarray | None = None
+    def push_state(
+        self,
+        qpos: np.ndarray,
+        qvel: np.ndarray,
+        *,
+        sim_time: float | int = 0.0,
+        xfrc_applied: np.ndarray | None = None,
     ) -> None:
-        """Append one physics frame (qpos/qvel) to the internal queue."""
-        frame = Frame(qpos=qpos, qvel=qvel, xfrc_applied=xfrc_applied)
-        self._ringbuffer.push(frame)
-        
-        # Update absolute time calculation - viewer is the single source of truth
-        self._calculate_absolute_time(sim_time)
+        """Copy MuJoCo state into shared rings (qpos / qvel)."""
+        self._rings["qpos"].push(qpos)
+        self._rings["qvel"].push(qvel)
+        # Append scalar sim_time into qvel ring’s last slot (compact trick)
+        # Alternatively create a dedicated ring; choose what you prefer.
+        # For now we skip sim_time — worker uses its own clock.
 
-    def push_scalar(self, sim_time: float, scalars: dict[str, float]) -> None:
-        """Stream scalar values for live plotting."""
-        # Only update plots if they are enabled
-        if self._enable_plots and self._scalar_plot is not None:
-            absolute_time = self._calculate_absolute_time(sim_time)
-            self._scalar_plot.update_data(absolute_time, scalars)
+        if xfrc_applied is not None:
+            # If you later add a ring for forces, push here
+            pass
 
-    def update_telemetry(self, metrics: dict[str, float]) -> None:
-        """Update the telemetry table with new metrics."""
-        self._telemetry_model.update(metrics)
+    def push_scalars(self, scalars: Mapping[str, float]) -> None:
+        """Send telemetry metrics to the GUI."""
+        self._metrics_q.put(dict(scalars))
 
-    def update(self, callback: Callback | None = None) -> np.ndarray:
+    # ------------------------------------------------------------------ #
+    #  Consumer helper – drag forces coming back
+    # ------------------------------------------------------------------ #
+
+    def poll_forces(self) -> np.ndarray | None:
         """
-        Redraw the scene, pump the Qt event loop, and return the current
-        `xfrc_applied` array so the RL loop can copy it back into the sim.
+        Non-blocking.  Returns the latest ``xfrc_applied`` array generated by
+        mouse interaction in the GUI, or ``None`` if nothing new.
         """
-        self._viewport.set_callback(callback)
-        self._viewport.update()
-        self.app.processEvents()
-        
-        # Update status bar with current timing information after each render
-        sim_time = float(self._data.time)
-        self._status_bar_manager.update_fps_and_timing(
-            ringbuffer=self._ringbuffer,
-            sim_time=sim_time,
-            absolute_sim_time=self.absolute_sim_time,
-        )
-        
-        return self.data.xfrc_applied.copy()
+        out = None
+        while self._ctrl.poll():
+            tag, payload = self._ctrl.recv()
+            if tag == "forces":
+                out = payload
+            elif tag == "shutdown":
+                self.close()
+        return out
 
-    # ----------------------------------------------------------------------
+    # ------------------------------------------------------------------ #
+    #  Shutdown
+    # ------------------------------------------------------------------ #
 
-    def keyPressEvent(self, ev):                           # type: ignore[override]
-        if ev.key() == Qt.Key_R:
-            mujoco.mjv_defaultFreeCamera(self.model, self.cam)
-            self._viewport.update()
-        elif ev.key() in (Qt.Key_Escape, Qt.Key_Q):
-            self.close()
-
-
-
-class DefaultMujocoViewer:
-    """Very small off-screen renderer used for video export."""
-
-    def __init__(self, model: mujoco.MjModel, *, width: int = 640, height: int = 480) -> None:
-        self.model = model
-        self.data  = mujoco.MjData(model)
-
-        self._w, self._h = width, height
-        self._ctx = mujoco.gl_context.GLContext(width, height)
-        self._ctx.make_current()
-
-        self.scene = mujoco.MjvScene(model, maxgeom=20_000)
-        self.cam   = mujoco.MjvCamera()
-        self.opt   = mujoco.MjvOption()
-        self.pert  = mujoco.MjvPerturb()
-        mujoco.mjv_defaultFreeCamera(model, self.cam)
-
-        self._rect = mujoco.MjrRect(0, 0, width, height)
-        self._mjr  = mujoco.MjrContext(model, mujoco.mjtFontScale.mjFONTSCALE_150)
-        mujoco.mjr_setBuffer(mujoco.mjtFramebuffer.mjFB_OFFSCREEN, self._mjr)
-
-    def set_mjdata(self, data: mujoco.MjData) -> None:
-        self.data = data
-
-    def render(self, callback: Callback | None = None) -> None:
-        mujoco.mjv_updateScene(self.model, self.data,
-                               self.opt, self.pert, self.cam,
-                               mujoco.mjtCatBit.mjCAT_ALL,
-                               self.scene)
-        if callback:
-            callback(self.model, self.data, self.scene)
-        mujoco.mjr_render(self._rect, self.scene, self._mjr)
-
-    def read_pixels(self, callback: Callback | None = None) -> np.ndarray:
-        self.render(callback)
-        rgb = np.empty((self._h, self._w, 3), dtype=np.uint8)
-        mujoco.mjr_readPixels(rgb, None, self._rect, self._mjr)
-        return np.flipud(rgb)
+    def close(self) -> None:
+        """Terminate the GUI process and unlink shared memory."""
+        try:
+            if self._proc.is_alive():
+                self._proc.terminate()
+                self._proc.join(timeout=1.0)
+        finally:
+            for ring in self._rings.values():
+                ring.close()
+                ring.unlink()
+            self._ctrl.close()
+            self._tmp_mjb_path.unlink(missing_ok=True)

@@ -1,0 +1,96 @@
+# kmv/ui/plot.py
+"""
+`ScalarPlot` – light-weight real-time line plot for up to a few dozen
+scalar streams.  Designed for k-Hz updates without blocking the GUI thread.
+
+Dependencies
+------------
+* PySide6
+* pyqtgraph
+"""
+
+from __future__ import annotations
+
+from collections import deque
+from typing import Dict, Tuple
+
+import pyqtgraph as pg
+from PySide6.QtWidgets import QWidget, QVBoxLayout
+
+
+class ScalarPlot(QWidget):
+    """
+    Parameters
+    ----------
+    history : int
+        Max samples kept per curve.
+    max_curves : int
+        Max number of distinct scalar keys shown simultaneously.
+    """
+
+    def __init__(
+        self,
+        *,
+        history: int = 1_000,
+        max_curves: int = 32,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._history     = history
+        self._max_curves  = max_curves
+
+        # --------- Qt widget layout ------------------------------------ #
+        layout      = QVBoxLayout(self)
+        self._plot  = pg.PlotWidget()
+        self._plot.setClipToView(True)
+        self._plot.showGrid(x=True, y=True)
+        self._plot.addLegend(offset=(10, 10))
+        layout.addWidget(self._plot)
+
+        # --------- internal state -------------------------------------- #
+        self._curves: Dict[str, pg.PlotDataItem] = {}
+        self._buffers: Dict[str, deque[Tuple[float, float]]] = {}
+
+        self._palette = [
+            "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4",
+            "#FFEAA7", "#DDA0DD", "#FF8C42", "#98D8C8",
+            "#F7DC6F", "#BB8FCE", "#85C1E9", "#F8C471",
+            "#82E0AA", "#F1948A", "#AED6F1", "#D7DBDD",
+        ]
+        self._color_index = 0
+
+    # ------------------------------------------------------------------ #
+    #  Internal helpers
+    # ------------------------------------------------------------------ #
+
+    def _next_color(self) -> str:
+        color = self._palette[self._color_index % len(self._palette)]
+        self._color_index += 1
+        return color
+
+    # ------------------------------------------------------------------ #
+    #  Public API
+    # ------------------------------------------------------------------ #
+
+    def update_data(self, t: float, scalars: Dict[str, float]) -> None:
+        """
+        Append one sample per scalar and update the curves.
+
+        Called by `ViewerWindow.step_and_draw()` at ~20 Hz.
+        """
+        for name, value in scalars.items():
+            if name not in self._buffers:
+                if len(self._curves) >= self._max_curves:
+                    continue  # silently drop extra streams
+                self._buffers[name] = deque(maxlen=self._history)
+                color = self._next_color()
+                self._curves[name] = self._plot.plot(
+                    pen=pg.mkPen(color=color, width=2), name=name
+                )
+
+            self._buffers[name].append((t, value))
+
+        # redraw all curves
+        for name, buf in self._buffers.items():
+            ts, vs = zip(*buf)
+            self._curves[name].setData(ts, vs)
