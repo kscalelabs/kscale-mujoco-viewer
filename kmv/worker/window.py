@@ -46,7 +46,9 @@ class ViewerWindow(QMainWindow):
         model: mujoco.MjModel,
         data: mujoco.MjData,
         rings: Mapping[str, SharedArrayRing],
-        metrics_q,
+        *,
+        table_q,
+        plot_q,
         view_opts: dict[str, object] | None = None,
         parent: QWidget | None = None,
     ) -> None:
@@ -64,7 +66,8 @@ class ViewerWindow(QMainWindow):
         self._model      = model
         self._data       = data
         self._rings      = rings
-        self._metrics_q  = metrics_q
+        self._table_q    = table_q
+        self._plot_q     = plot_q
 
         # -- central OpenGL viewport ----------------------------------------- #
         self._viewport = GLViewport(model, data, parent=self)
@@ -105,19 +108,22 @@ class ViewerWindow(QMainWindow):
         # -- 1. shared-memory read ------------------------------------------ #
         qpos = self._rings["qpos"].latest()
         qvel = self._rings["qvel"].latest()
+        sim_time = float(self._rings["sim_time"].latest()[0])
 
         self._data.qpos[:] = qpos
         self._data.qvel[:] = qvel
+        self._data.time = sim_time
         mujoco.mj_forward(self._model, self._data)
 
-        # -- 2. metrics queue ------------------------------------------------ #
-        while not self._metrics_q.empty():
-            metrics = self._metrics_q.get_nowait()
-            # update table
-            self._telemetry_table.update(metrics)
-            # update scalar plot (if enabled)
-            if self._scalar_plot is not None:
-                self._scalar_plot.update_data(float(self._data.time), metrics)
+        # -- 2a. update table ------------------------------------------- #
+        while not self._table_q.empty():
+            self._telemetry_table.update(self._table_q.get_nowait())
+
+        # -- 2b. update scalar plot ------------------------------------- #
+        if self._scalar_plot is not None:
+            while not self._plot_q.empty():
+                scalars = self._plot_q.get_nowait()
+                self._scalar_plot.update_data(sim_time, scalars)
 
         # -- 3. repaint ------------------------------------------------------ #
         self._viewport.update()   # Qt will schedule paintGL()

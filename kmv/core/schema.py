@@ -31,6 +31,7 @@ def default_streams(model: mujoco.MjModel) -> Mapping[str, Tuple[int, ...]]:
     return {
         "qpos": (model.nq,),
         "qvel": (model.nv,),
+        "sim_time": (1,),
         # Example extension:
         # "rgb" : (240, 320, 3),
     }

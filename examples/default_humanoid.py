@@ -2,7 +2,7 @@
 """
 Sanity-check for the new *out-of-process* viewer.
 
-Runs MuJoCo’s humanoid for a while and streams qpos/qvel + live telemetry
+Runs MuJoCo's humanoid for a while and streams qpos/qvel + live telemetry
 to `kmv.app.viewer.Viewer`.  The GUI should stay ~60 FPS even if we sleep.
 """
 
@@ -18,14 +18,14 @@ import colorlogging
 
 from kmv.app.viewer import Viewer
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:
     # ---------- logging ------------------------------------------------ #
     colorlogging.configure()
     xml_path = Path(__file__).parent.parent / "tests" / "assets" / "humanoid.xml"
-    LOGGER.info("Loading model: %s", xml_path)
+    logger.info("Loading model: %s", xml_path)
 
     # ---------- compile model ----------------------------------------- #
     physics_dt = 0.002
@@ -39,7 +39,7 @@ def main() -> None:
     # push one frame so GUI window pops immediately
     viewer.push_state(data.qpos, data.qvel, sim_time=data.time)
 
-    LOGGER.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C to quit")
+    logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C to quit")
 
     # ---------- main loop --------------------------------------------- #
     sim_it   = 0
@@ -70,12 +70,24 @@ def main() -> None:
             # (5) live telemetry
             wall_elapsed = time.perf_counter() - t0_wall
             realtime_x   = float(data.time) / (wall_elapsed + 1e-9)
-            viewer.push_scalars(
+            viewer.push_table_metrics(
                 {
                     "sim t":        float(data.time),
                     "wall t":       wall_elapsed,
                     "iters":        sim_it,
                     "× real-time":  realtime_x,
+                }
+            )
+
+            # first three qpos/qvel values as live plot streams
+            viewer.push_plot_metrics(
+                {
+                    "qpos0": float(data.qpos[0]),
+                    "qpos1": float(data.qpos[1]),
+                    "qpos2": float(data.qpos[2]),
+                    "qvel0": float(data.qvel[0]),
+                    "qvel1": float(data.qvel[1]),
+                    "qvel2": float(data.qvel[2]),
                 }
             )
 

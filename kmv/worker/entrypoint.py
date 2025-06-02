@@ -32,7 +32,8 @@ def run_worker(
     model_path: str,
     shm_cfg: dict[str, dict],    # {"qpos": {"name": str, "shape": tuple}, …}
     ctrl_send: Connection,       # write-only end (forces → parent, shutdown)
-    metrics_q:  Queue,           # scalar telemetry (parent → GUI)
+    table_q:  Queue,             # NEW
+    plot_q:   Queue,             # NEW
     view_opts: dict[str, Any],   # forwarded viewer flags
 ) -> None:
     """
@@ -54,7 +55,9 @@ def run_worker(
 
     # ---- 3.  Qt application & window -------------------------------- #
     app    = QApplication.instance() or QApplication(sys.argv)
-    window = ViewerWindow(model, data, rings, metrics_q, view_opts)
+    window = ViewerWindow(model, data, rings,
+                          table_q=table_q, plot_q=plot_q,
+                          view_opts=view_opts)
     window._ctrl_send = ctrl_send      # expose pipe to viewport for forces
 
     # ---- 4.  Graphics timer (≈60 Hz) -------------------------------- #
@@ -66,7 +69,7 @@ def run_worker(
     # ---- 5.  Event-loop --------------------------------------------- #
     exit_code = app.exec()
 
-    # ---- 6.  Notify parent we’re done ------------------------------- #
+    # ---- 6.  Notify parent we're done ------------------------------- #
     try:
         ctrl_send.send(("shutdown", exit_code))
     except (BrokenPipeError, EOFError):

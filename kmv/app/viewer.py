@@ -91,9 +91,10 @@ class Viewer:
         }
 
         # ---------- control & metrics IPC ------------------------------ #
-        self._ctrl = ControlPipe()
-        ctx        = mp.get_context("spawn")
-        self._metrics_q = make_metrics_queue()
+        self._ctrl      = ControlPipe()
+        ctx             = mp.get_context("spawn")
+        self._table_q   = make_metrics_queue()
+        self._plot_q    = make_metrics_queue()
 
         # ---------- spawn GUI process ---------------------------------- #
         self._proc = ctx.Process(
@@ -101,8 +102,9 @@ class Viewer:
             args=(
                 str(self._tmp_mjb_path),
                 shm_cfg,
-                self._ctrl.sender(),       # write-only end to child
-                self._metrics_q,
+                self._ctrl.sender(),       # control pipe
+                self._table_q,             # NEW
+                self._plot_q,              # NEW
                 view_opts,                 # dict with width, shadow…
             ),
             daemon=True,
@@ -124,17 +126,23 @@ class Viewer:
         """Copy MuJoCo state into shared rings (qpos / qvel)."""
         self._rings["qpos"].push(qpos)
         self._rings["qvel"].push(qvel)
-        # Append scalar sim_time into qvel ring’s last slot (compact trick)
-        # Alternatively create a dedicated ring; choose what you prefer.
-        # For now we skip sim_time — worker uses its own clock.
+        self._rings["sim_time"].push(np.asarray([sim_time], dtype=np.float64))
 
         if xfrc_applied is not None:
             # If you later add a ring for forces, push here
             pass
 
-    def push_scalars(self, scalars: Mapping[str, float]) -> None:
-        """Send telemetry metrics to the GUI."""
-        self._metrics_q.put(dict(scalars))
+    # ------------------------------------------------------------------ #
+    #  New convenience helpers
+    # ------------------------------------------------------------------ #
+
+    def push_table_metrics(self, metrics: Mapping[str, float]) -> None:
+        """Send key-value pairs to the telemetry table only."""
+        self._table_q.put(dict(metrics))
+
+    def push_plot_metrics(self, scalars: Mapping[str, float]) -> None:
+        """Send scalar streams to the live plot only."""
+        self._plot_q.put(dict(scalars))
 
     # ------------------------------------------------------------------ #
     #  Consumer helper – drag forces coming back
