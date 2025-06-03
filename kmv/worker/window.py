@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QAction
 
 from kmv.ipc.state       import SharedArrayRing
+from multiprocessing.connection import Connection
 from kmv.ui.viewport     import GLViewport
 from kmv.ui.plot         import ScalarPlot
 from kmv.ui.table        import ViewerStatsTable
@@ -54,6 +55,7 @@ class ViewerWindow(QMainWindow):
         *,
         table_q,
         plot_q,
+        ctrl_send: Connection,         # NEW
         view_conf: ViewerConfig,
         parent: QWidget | None = None,
     ) -> None:
@@ -88,6 +90,7 @@ class ViewerWindow(QMainWindow):
             contact_force = contact_force,
             contact_point = contact_point,
             inertia       = inertia,
+            on_forces     = lambda arr: ctrl_send.send(("forces", arr)),
             parent        = self,
         )
         self.setCentralWidget(self._viewport)

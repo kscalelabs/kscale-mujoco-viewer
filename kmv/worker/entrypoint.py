@@ -58,9 +58,10 @@ def run_worker(
     # ---- 3.  Qt application & window -------------------------------- #
     app    = QApplication.instance() or QApplication(sys.argv)
     window = ViewerWindow(model, data, rings,
-                          table_q=table_q, plot_q=plot_q,
+                          table_q=table_q,
+                          plot_q=plot_q,
+                          ctrl_send=ctrl_send,
                           view_conf=view_conf)
-    window._ctrl_send = ctrl_send      # expose pipe to viewport for forces
 
     # ── let the parent know the GUI is ready --------------------------- #
     try:

@@ -7,7 +7,7 @@ Pure Qt + MuJoCo; no multiprocessing, no shared-memory.
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Optional
 
 import mujoco
 import numpy as np
@@ -49,6 +49,7 @@ class GLViewport(QOpenGLWidget):
         contact_force: bool = False,
         contact_point: bool = False,
         inertia: bool = False,
+        on_forces: Optional[Callable[[np.ndarray], None]] = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -69,6 +70,9 @@ class GLViewport(QOpenGLWidget):
 
         # callback for overlay rendering
         self._callback: Callable[[mujoco.MjModel, mujoco.MjData, mujoco.MjvScene], None] | None = None
+
+        # forces callback
+        self._on_forces = on_forces
 
         # mouse state
         self._mouse_btn: int | None = None
@@ -96,10 +100,8 @@ class GLViewport(QOpenGLWidget):
         mujoco.mjv_applyPerturbForce(self.model, self._data, self.pert)
 
         # ── NEW: stream wrench continuously while dragging ────────────── #
-        if self.pert.active and hasattr(self.parent(), "_ctrl_send"):
-            # Copy is cheap (nbody × 6 doubles) and keeps the pipe unshared
-            self.parent()._ctrl_send.send(("forces",
-                                           self._data.xfrc_applied.copy()))
+        if self.pert.active and self._on_forces is not None:
+            self._on_forces(self._data.xfrc_applied.copy())
 
         dpr  = self.devicePixelRatioF()
         rect = mujoco.MjrRect(0, 0,
@@ -176,9 +178,9 @@ class GLViewport(QOpenGLWidget):
         # ── NEW ────────────────────────────────────────────────
         # Flush a single "zero wrench" so the physics loop
         # knows the drag interaction has ended.
-        if hasattr(self.parent(), "_ctrl_send"):
+        if self._on_forces is not None:
             zero_xrfc = np.zeros_like(self._data.xfrc_applied)
-            self.parent()._ctrl_send.send(("forces", zero_xrfc))
+            self._on_forces(zero_xrfc)
 
     def mouseMoveEvent(self, ev):                          # type: ignore[override]
         x, y = ev.position().x(), ev.position().y()
