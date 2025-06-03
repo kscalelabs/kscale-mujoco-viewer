@@ -14,7 +14,8 @@ import ctypes
 from multiprocessing import Lock, shared_memory
 from typing import Tuple
 
-import numpy as np
+import numpy as np        
+import gc, warnings
 
 __all__ = ["SharedArrayRing"]
 
@@ -133,33 +134,29 @@ class SharedArrayRing:
 
     def close(self) -> None:
         """
-        Idempotent – may be called many times.
-        Guarantees that *all* local buffer views are gone before closing.
+        Idempotent.  Detaches local Python views then closes the
+        underlying `SharedMemory` mapping.
         """
-        # 1️⃣  remove Python objects that still export the buffer
-        if hasattr(self, "_buf"):
+
+
+        # 1. drop local views we own
+        try:
             del self._buf
-        if hasattr(self, "_idx"):
             del self._idx
+        except AttributeError:
+            pass
 
-        # 2️⃣  make sure ref-counts really drop
-        import gc, warnings, time
-        gc.collect()
+        gc.collect()                      # ensure ref-counts hit zero
 
-        # 3️⃣  retry close a few times in the rare case some view lingers
-        for _ in range(3):
-            try:
-                self._shm.close()
-                return
-            except BufferError:              # exported pointers still exist
-                warnings.warn(
-                    "SharedArrayRing.close(): dangling view – retrying", RuntimeWarning
-                )
-                time.sleep(0.05)
-                gc.collect()
-
-        # 4️⃣  final attempt (let it raise if it still fails – programmer bug)
-        self._shm.close()
+        # 2. single close attempt
+        try:
+            self._shm.close()
+        except BufferError as err:
+            # probably some external view still alive – emit warning and move on
+            warnings.warn(
+                f"SharedArrayRing.close(): leaked view detected ({err}). "
+                "Shared memory left mapped.", RuntimeWarning, stacklevel=2
+            )
 
     def unlink(self) -> None:
         """Destroy the backing shared-memory block (creator only)."""
