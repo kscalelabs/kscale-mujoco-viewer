@@ -132,15 +132,14 @@ class ViewerWindow(QMainWindow):
         self._plot_ctr     = 0
         self._plot_hz      = 0.0          # latest 1-s average
 
-        # ── sim-loop throughput (computed from 'iters' field) ────────────────
-        self._iters_prev      = 0
-        self._iters_prev_time = time.perf_counter()
-        self._iters_per_sec   = 0.0
-
         # ── physics-state push throughput ----------------------------------- #
-        self._pushes_prev      = 0
-        self._pushes_prev_time = time.perf_counter()
-        self._pushes_per_sec   = 0.0
+        self._phys_iters_prev      = 0
+        self._phys_iters_prev_time = time.perf_counter()
+        self._phys_iters_per_sec   = 0.0
+
+        # ── NEW: wall-clock & reset tracking -------------------------------- #
+        self._wall_start   : float | None = None   # set on first frame
+        self._reset_count  = 0                    # increments on every sim reset
 
     # ───────────────────────────────────────────────────────────────────── #
     def _plot_for_group(self, group: str) -> ScalarPlot:
@@ -173,8 +172,6 @@ class ViewerWindow(QMainWindow):
         except AttributeError:
             backlog = -1
 
-        print(f"[GUI] {now_gui:10.3f}  sim_t={self._rings['sim_time'].latest()[0]:6.2f}"
-              f"  backlog={backlog:3}")
 
         # -- 1. shared-memory read ------------------------------------------ #
         self._frame_ctr += 1                         # count every repaint
@@ -191,8 +188,18 @@ class ViewerWindow(QMainWindow):
         # ---- absolute sim time (handles resets) --------------------- #
         if sim_time < self._sim_prev - self._reset_tol:      # reset detected
             self._sim_offset += self._sim_prev
+            self._reset_count += 1                           # ← NEW counter
         self._sim_prev     = sim_time
         self._abs_sim_time = self._sim_offset + sim_time
+
+        # ---- wall-clock bookkeeping --------------------------------- #
+        if self._wall_start is None:                         # first frame
+            self._wall_start = now_gui
+        wall_elapsed = now_gui - self._wall_start
+        realtime_x   = (
+            self._abs_sim_time / max(wall_elapsed, 1e-9)
+            if wall_elapsed > 0.0 else 0.0
+        )
 
         self._data.qpos[:] = qpos
         self._data.qvel[:] = qvel
@@ -201,41 +208,32 @@ class ViewerWindow(QMainWindow):
 
         # -- 2a. pull parent-provided rows ----------------------------------- #
         rows: dict[str, float] = {}
-        iters_value: int | None = None
-        pushes_value: int | None = None
+        phys_iters_value: int | None = None
 
         while not self._table_q.empty():
             msg = self._table_q.get_nowait()
             rows.update(msg)
-            if "iters" in msg:
-                iters_value = int(msg["iters"])
-            if "pushes" in msg:
-                pushes_value = int(msg["pushes"])
+            if "phys iters" in msg:
+                phys_iters_value = int(msg["phys iters"])
 
-        # -- 2b. compute iters / sec (GUI-side) ------------------------------ #
-        if iters_value is not None:
+        # -- 2b. compute phys iters / sec ----------------------------------- #
+        if phys_iters_value is not None:
             now = time.perf_counter()
-            dt  = now - self._iters_prev_time
-            if dt > 0:                                # avoid div-zero on first frame
-                self._iters_per_sec = (iters_value - self._iters_prev) / dt
-            self._iters_prev      = iters_value
-            self._iters_prev_time = now
-
-        # -- 2b-bis.  compute pushes / sec ----------------------------------- #
-        if pushes_value is not None:
-            now = time.perf_counter()
-            dt  = now - self._pushes_prev_time
+            dt  = now - self._phys_iters_prev_time
             if dt > 0:
-                self._pushes_per_sec = (pushes_value - self._pushes_prev) / dt
-            self._pushes_prev      = pushes_value
-            self._pushes_prev_time = now
+                self._phys_iters_per_sec = (phys_iters_value - self._phys_iters_prev) / dt
+            self._phys_iters_prev      = phys_iters_value
+            self._phys_iters_prev_time = now
 
         # -- 2c. GUI-local metrics ------------------------------------------ #
         rows["FPS"]        = round(self._fps, 1)
         rows["plot Hz"]    = round(self._plot_hz, 1)
-        rows["iters/s"]    = round(self._iters_per_sec, 1)
-        rows["pushes/s"]   = round(self._pushes_per_sec, 1)
+        rows["phys iters/s"]   = round(self._phys_iters_per_sec, 1)
         rows["abs sim t"]  = round(self._abs_sim_time, 3)
+        rows["sim t"]      = round(sim_time, 3)              # NEW
+        rows["wall t"]     = round(wall_elapsed, 2)          # NEW
+        rows["resets"]     = self._reset_count               # NEW
+        rows["× real-time"] = round(realtime_x, 2)           # NEW
 
         self._telemetry_table.update(rows)
 
@@ -250,8 +248,6 @@ class ViewerWindow(QMainWindow):
                 plot.update_data(self._abs_sim_time, scalars)
                 n_drained += 1
             self._plot_ctr += n_drained
-            if n_drained:
-                print(f"        drained={n_drained:3}")
 
         if (now - self._plot_timer) >= 1.0:
             self._plot_hz   = self._plot_ctr / (now - self._plot_timer)

@@ -23,6 +23,7 @@ class _TableModel(QAbstractTableModel):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._rows: list[tuple[str, Any]] = []
+        self._known_keys: set[str] = set()     # ← all keys ever seen
 
     # — Qt boilerplate ---------------------------------------------------- #
     def rowCount(self, *_):          # type: ignore[override]
@@ -42,10 +43,23 @@ class _TableModel(QAbstractTableModel):
     # ------------------------------------------------------------------ #
 
     def replace(self, metrics: Mapping[str, Any]) -> None:
-        """Fast full refresh — cheap for ≲ few-hundred rows."""
+        """
+        Fast full refresh keeping *all* previously seen keys.
+
+        Any key that is missing in *metrics* for this frame is filled with
+        ``None`` so the row order remains stable.
+        """
+        # (1) remember every key ever logged
+        self._known_keys.update(metrics.keys())
+
+        # (2) prepare rows – value is either the new sample or None
+        rows: list[tuple[str, Any]] = []
+        for key in sorted(self._known_keys):       # deterministic order
+            rows.append((key, metrics.get(key, None)))
+
+        # (3) atomically swap the model data
         self.beginResetModel()
-        # sort keys for table stability
-        self._rows = sorted(metrics.items())
+        self._rows = rows
         self.endResetModel()
 
 
