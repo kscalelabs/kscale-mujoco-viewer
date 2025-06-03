@@ -95,6 +95,12 @@ class GLViewport(QOpenGLWidget):
         mujoco.mjv_applyPerturbPose(self.model, self._data, self.pert, 0)
         mujoco.mjv_applyPerturbForce(self.model, self._data, self.pert)
 
+        # ── NEW: stream wrench continuously while dragging ────────────── #
+        if self.pert.active and hasattr(self.parent(), "_ctrl_send"):
+            # Copy is cheap (nbody × 6 doubles) and keeps the pipe unshared
+            self.parent()._ctrl_send.send(("forces",
+                                           self._data.xfrc_applied.copy()))
+
         dpr  = self.devicePixelRatioF()
         rect = mujoco.MjrRect(0, 0,
                               int(self.width() * dpr),
@@ -167,14 +173,7 @@ class GLViewport(QOpenGLWidget):
         self._mouse_btn  = None
         self.update()
 
-        # ↩ send forces back to parent process (ViewerWindow sets _ctrl_send)
-        if (
-            released == Qt.RightButton
-            and hasattr(self.parent(), "_ctrl_send")
-        ):
-            self.parent()._ctrl_send.send(
-                ("forces", self._data.xfrc_applied.copy())
-            )
+        # nothing to send here any more – forces are now streamed every frame
 
     def mouseMoveEvent(self, ev):                          # type: ignore[override]
         x, y = ev.position().x(), ev.position().y()
