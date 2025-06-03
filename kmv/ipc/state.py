@@ -65,8 +65,12 @@ class SharedArrayRing:
         name: str | None = None,
         create: bool = True,
     ) -> None:
-        if capacity < 1:
-            raise ValueError("capacity must be ≥ 1")
+        if capacity < 1 or (capacity & (capacity - 1)) != 0:
+            raise ValueError(
+                "capacity must be a power of two and ≥1 "
+                f"(got {capacity})"
+            )
+        self._mask = capacity - 1          # single xor-able mask
 
         self.shape      = shape
         self.capacity   = capacity
@@ -104,7 +108,7 @@ class SharedArrayRing:
             raise ValueError(f"expected shape {self.shape}, got {arr.shape}")
 
         with self._lock:
-            i = (self._idx.value + 1) & (self.capacity - 1)
+            i = (self._idx.value + 1) & self._mask
             self._buf[i, :] = arr.ravel()   # ① copy first
             self._idx.value = i             # ② publish index *after* data
 
@@ -114,7 +118,7 @@ class SharedArrayRing:
 
     def latest(self) -> np.ndarray:
         """Return a **copy** of the newest element."""
-        i   = self._idx.value                  # racy read is fine
+        i   = self._idx.value & self._mask     # defensive mask
         out = self._buf[i].copy().reshape(self.shape)
         return out
 
