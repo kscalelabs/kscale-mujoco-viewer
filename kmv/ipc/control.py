@@ -49,7 +49,10 @@ class ControlPipe:
 
     def poll(self) -> bool:
         """`True` if a message is waiting (non-blocking)."""
-        return self._recv.poll()
+        try:
+            return self._recv.poll()
+        except (OSError, EOFError):
+            return False
 
     def recv(self) -> tuple[str, Any]:
         """Blocking receive.  Returns `(tag, payload)`."""
