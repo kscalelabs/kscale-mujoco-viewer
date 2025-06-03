@@ -155,9 +155,20 @@ class Viewer:
         """Send key-value pairs to the telemetry table only."""
         self._table_q.put(dict(metrics))
 
-    def push_plot_metrics(self, scalars: Mapping[str, float]) -> None:
-        """Send scalar streams to the live plot only."""
-        self._plot_q.put(dict(scalars))
+    def push_plot_metrics(
+        self,
+        scalars: Mapping[str, float],
+        group: str = "default",
+    ) -> None:
+        """
+        Stream a batch of *scalars* belonging to *group*.
+
+        Parameters
+        ----------
+        scalars : mapping {name -> value}
+        group   : name of the panel to plot into ("physics", "reward", …)
+        """
+        self._plot_q.put({"group": group, "scalars": dict(scalars)})
 
     # ------------------------------------------------------------------ #
     #  Consumer helper – drag forces coming back

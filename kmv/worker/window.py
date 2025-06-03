@@ -95,13 +95,8 @@ class ViewerWindow(QMainWindow):
         self.setStatusBar(QStatusBar(self))
 
         # -- live scalar plot -------------------------------------------------- #
-        if enable_plots:
-            self._scalar_plot = ScalarPlot(history=600, max_curves=32)
-            dock = QDockWidget("Scalars", self)
-            dock.setWidget(self._scalar_plot)
-            self.addDockWidget(Qt.BottomDockWidgetArea, dock)
-        else:
-            self._scalar_plot = None
+        self._plots: dict[str, ScalarPlot] = {}
+        self._enable_plots = enable_plots
 
         # -- telemetry table --------------------------------------------------- #
         self._telemetry_table = TelemetryTable(self)      # <-- widget, not model
@@ -141,6 +136,18 @@ class ViewerWindow(QMainWindow):
         self._iters_prev      = 0
         self._iters_prev_time = time.perf_counter()
         self._iters_per_sec   = 0.0
+
+    # ───────────────────────────────────────────────────────────────────── #
+    def _plot_for_group(self, group: str) -> ScalarPlot:
+        if group in self._plots:
+            return self._plots[group]
+
+        plot = ScalarPlot(history=600, max_curves=32)
+        dock = QDockWidget(group.capitalize(), self)
+        dock.setWidget(plot)
+        self.addDockWidget(Qt.BottomDockWidgetArea, dock)
+        self._plots[group] = plot
+        return plot
 
     # ------------------------------------------------------------------ #
     #  Timer callback
@@ -214,17 +221,19 @@ class ViewerWindow(QMainWindow):
 
         self._telemetry_table.update(rows)
 
-        # -- 2b. update scalar plot ------------------------------------- #
-        if self._scalar_plot is not None:
+        # -- 2b. update scalar plots (one panel per group) --------------- #
+        if self._enable_plots:
             n_drained = 0
-            latest = None
             while not self._plot_q.empty():
-                latest = self._plot_q.get_nowait()
+                msg      = self._plot_q.get_nowait()
+                group    = msg.get("group", "default")
+                scalars  = msg["scalars"]
+                plot     = self._plot_for_group(group)
+                plot.update_data(self._abs_sim_time, scalars)
                 n_drained += 1
-            if latest is not None:
-                self._scalar_plot.update_data(self._abs_sim_time, latest)
-                self._plot_ctr += 1
-            print(f"        drained={n_drained:3}")
+            self._plot_ctr += n_drained
+            if n_drained:
+                print(f"        drained={n_drained:3}")
 
         if (now - self._plot_timer) >= 1.0:
             self._plot_hz   = self._plot_ctr / (now - self._plot_timer)

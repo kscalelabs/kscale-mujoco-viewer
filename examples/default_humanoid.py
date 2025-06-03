@@ -80,7 +80,7 @@ def main() -> None:
             )
 
             # first three qpos/qvel values as live plot streams
-            viewer.push_plot_metrics(
+            viewer.push_plot_metrics(group="Physics", scalars=
                 {
                     "qpos0": float(data.qpos[0]),
                     "qpos1": float(data.qpos[1]),
