@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 import pathlib
 from typing import Any
+import signal
 
 import mujoco
 import numpy as np
@@ -67,6 +68,11 @@ def run_worker(
         # parent already quit – just keep going so Qt can shut down cleanly
         pass
 
+    # ---- 0-bis.  graceful SIGTERM → app.quit() ---------------------- #
+    def _sigterm_handler(_signum, _frame):
+        app.quit()                      # triggers safe shutdown path
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
     # ---- 4.  Graphics timer (≈60 Hz) -------------------------------- #
     gfx_timer = QTimer()
     gfx_timer.setInterval(16)
@@ -74,10 +80,16 @@ def run_worker(
     gfx_timer.start()
 
     # ---- 5.  Event-loop --------------------------------------------- #
-    exit_code = app.exec()
-
-    # ---- 6.  Notify parent we're done ------------------------------- #
+    exit_code = 0
     try:
-        ctrl_send.send(("shutdown", exit_code))
-    except (BrokenPipeError, EOFError):
-        pass   # parent already quit
+        exit_code = app.exec()
+    finally:
+        # (6-a)  detach from shared memory *first*
+        for ring in rings.values():
+            ring.close()                # consumer never unlinks
+
+        # (6-b)  tell parent we're done
+        try:
+            ctrl_send.send(("shutdown", exit_code))
+        except (BrokenPipeError, EOFError):
+            pass

@@ -128,6 +128,33 @@ class SharedArrayRing:
         return self._shm.name
 
     def close(self) -> None:
+        """
+        Idempotent – may be called many times.
+        Guarantees that *all* local buffer views are gone before closing.
+        """
+        # 1️⃣  remove Python objects that still export the buffer
+        if hasattr(self, "_buf"):
+            del self._buf
+        if hasattr(self, "_idx"):
+            del self._idx
+
+        # 2️⃣  make sure ref-counts really drop
+        import gc, warnings, time
+        gc.collect()
+
+        # 3️⃣  retry close a few times in the rare case some view lingers
+        for _ in range(3):
+            try:
+                self._shm.close()
+                return
+            except BufferError:              # exported pointers still exist
+                warnings.warn(
+                    "SharedArrayRing.close(): dangling view – retrying", RuntimeWarning
+                )
+                time.sleep(0.05)
+                gc.collect()
+
+        # 4️⃣  final attempt (let it raise if it still fails – programmer bug)
         self._shm.close()
 
     def unlink(self) -> None:

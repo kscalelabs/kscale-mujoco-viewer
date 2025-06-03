@@ -204,17 +204,26 @@ class QtViewer:
     # ------------------------------------------------------------------ #
 
     def close(self) -> None:
-        """Terminate the GUI process and unlink shared memory."""
-        try:
-            if self._proc.is_alive():
-                self._proc.terminate()
-                self._proc.join(timeout=1.0)
-        finally:
-            for ring in self._rings.values():
-                ring.close()
-                ring.unlink()
-            self._ctrl.close()
-            self._tmp_mjb_path.unlink(missing_ok=True)
+        """Ask the worker to quit, wait, *then* unlink shared memory."""
+        if not self._proc.is_alive():
+            return            # already closed
+
+        # (1) polite SIGTERM (handled inside worker — see patch above)
+        self._proc.terminate()
+        self._proc.join(timeout=2.0)
+
+        # (2) if still stubborn, kill hard
+        if self._proc.is_alive():
+            self._proc.kill()
+            self._proc.join(timeout=1.0)
+
+        # (3) now we are the *only* process mapped → safe to unlink
+        for ring in self._rings.values():
+            ring.close()
+            ring.unlink()
+
+        self._ctrl.close()
+        self._tmp_mjb_path.unlink(missing_ok=True)
 
 
 Callback = Callable[[mujoco.MjModel, mujoco.MjData, mujoco.MjvScene], None]
