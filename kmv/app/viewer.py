@@ -57,7 +57,7 @@ def _build_shm_rings(model: mujoco.MjModel) -> dict[str, SharedArrayRing]:
 #  Public class
 # --------------------------------------------------------------------------- #
 
-class Viewer:
+class QtViewer:
     """
     High-level out-of-process viewer.
 

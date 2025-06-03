@@ -28,6 +28,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QTableView,
 )
+# QAction actually sits in QtGui
+from PySide6.QtGui import QAction
 
 from kmv.ipc.state       import SharedArrayRing
 from kmv.ui.viewport     import GLViewport
@@ -96,7 +98,14 @@ class ViewerWindow(QMainWindow):
 
         # -- live scalar plot -------------------------------------------------- #
         self._plots: dict[str, ScalarPlot] = {}
+        self._plot_docks:  dict[str, QDockWidget] = {}
+        self._plot_actions: dict[str, QAction] = {}
         self._enable_plots = enable_plots
+
+        # ── menu bar → "Plots" drop-down ---------------------------------- #
+        menubar = self.menuBar()
+        menubar.setNativeMenuBar(False)      # ← keep it inside the window on macOS
+        self._plots_menu = menubar.addMenu("&Plots")
 
         # -- telemetry table --------------------------------------------------- #
         self._telemetry_table = TelemetryTable(self)      # <-- widget, not model
@@ -143,14 +152,33 @@ class ViewerWindow(QMainWindow):
 
     # ───────────────────────────────────────────────────────────────────── #
     def _plot_for_group(self, group: str) -> ScalarPlot:
+        """
+        Lazily create one dock + QAction per *group*.  The dock starts hidden;
+        ticking the corresponding check-box in the **Plots** menu shows it.
+        """
         if group in self._plots:
             return self._plots[group]
 
+        # (1) graphics widget ------------------------------------------------ #
         plot = ScalarPlot(history=600, max_curves=32)
         dock = QDockWidget(group.capitalize(), self)
         dock.setWidget(plot)
         self.addDockWidget(Qt.BottomDockWidgetArea, dock)
-        self._plots[group] = plot
+        dock.hide()                                    # ← hidden by default
+
+        # (2) menu action ---------------------------------------------------- #
+        action = QAction(group.capitalize(), self, checkable=True)
+        action.setChecked(False)                      # unchecked = hidden
+        # bidirectional sync  (menu → dock)
+        action.toggled.connect(dock.setVisible)
+        # …and (dock → menu) in case user closes the dock title-bar "X"
+        dock.visibilityChanged.connect(action.setChecked)
+        self._plots_menu.addAction(action)
+
+        # (3) bookkeeping ---------------------------------------------------- #
+        self._plots[group]        = plot
+        self._plot_docks[group]   = dock
+        self._plot_actions[group] = action
         return plot
 
     # ------------------------------------------------------------------ #

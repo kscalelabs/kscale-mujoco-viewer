@@ -16,7 +16,7 @@ import mujoco
 import numpy as np
 import colorlogging
 
-from kmv.app.viewer import Viewer
+from kmv.app.viewer import QtViewer
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ def main() -> None:
     data  = mujoco.MjData(model)
 
     # ---------- launch viewer ----------------------------------------- #
-    viewer = Viewer(model, enable_plots=True)
+    viewer = QtViewer(model, enable_plots=True)
 
     # push one frame so GUI window pops immediately
     viewer.push_state(data.qpos, data.qvel, sim_time=data.time)
