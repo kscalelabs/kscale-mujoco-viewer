@@ -173,7 +173,12 @@ class GLViewport(QOpenGLWidget):
         self._mouse_btn  = None
         self.update()
 
-        # nothing to send here any more – forces are now streamed every frame
+        # ── NEW ────────────────────────────────────────────────
+        # Flush a single "zero wrench" so the physics loop
+        # knows the drag interaction has ended.
+        if hasattr(self.parent(), "_ctrl_send"):
+            zero_xrfc = np.zeros_like(self._data.xfrc_applied)
+            self.parent()._ctrl_send.send(("forces", zero_xrfc))
 
     def mouseMoveEvent(self, ev):                          # type: ignore[override]
         x, y = ev.position().x(), ev.position().y()
@@ -218,7 +223,15 @@ class GLViewport(QOpenGLWidget):
 
         self.update()
 
+    # ------------------------------------------------------------------ #
+    #  Mouse-wheel zoom  (softer: ~4 % per notch instead of 10 %)
+    # ------------------------------------------------------------------ #
     def wheelEvent(self, ev):
-        self.cam.distance *= 0.9 if ev.angleDelta().y() > 0 else 1.1
+        # One standard notch on most mice → angleDelta().y() = ±120
+        step = np.sign(ev.angleDelta().y())          # +1 (zoom-in) / −1 (out)
+        zoom_factor = 0.99 if step > 0 else 1.01     # ← 4 % change
+
+        # apply & clamp
+        self.cam.distance *= zoom_factor
         self.cam.distance = np.clip(self.cam.distance, 0.1, 100.0)
         self.update()
