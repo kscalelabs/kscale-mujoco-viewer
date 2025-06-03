@@ -134,6 +134,11 @@ class QtViewer:
     #  Producer helpers – called from sim loop
     # ------------------------------------------------------------------ #
 
+    @property
+    def is_open(self) -> bool:
+        """True while the GUI process is alive (or hasn't been closed)."""
+        return not self._closed
+
     def push_state(
         self,
         qpos: np.ndarray,
