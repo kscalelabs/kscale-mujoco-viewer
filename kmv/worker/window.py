@@ -111,6 +111,12 @@ class ViewerWindow(QMainWindow):
 
         self.show()
 
+        # ── absolute-time bookkeeping -------------------------------- #
+        self._sim_prev      = 0.0          # previous sim_time sample
+        self._sim_offset    = 0.0          # accumulated time before last reset
+        self._abs_sim_time  = 0.0          # latest absolute sim time
+        self._reset_tol     = 1e-9         # tiny epsilon to ignore FP jitter
+
         # ── apply *initial camera* parameters (optional) ------------------ #
         cam = self._viewport.cam
         if "camera_distance"  in opts: cam.distance  = float(opts["camera_distance"])
@@ -170,6 +176,12 @@ class ViewerWindow(QMainWindow):
         qvel = self._rings["qvel"].latest()
         sim_time = float(self._rings["sim_time"].latest()[0])
 
+        # ---- absolute sim time (handles resets) --------------------- #
+        if sim_time < self._sim_prev - self._reset_tol:      # reset detected
+            self._sim_offset += self._sim_prev
+        self._sim_prev     = sim_time
+        self._abs_sim_time = self._sim_offset + sim_time
+
         self._data.qpos[:] = qpos
         self._data.qvel[:] = qvel
         self._data.time = sim_time
@@ -198,6 +210,7 @@ class ViewerWindow(QMainWindow):
         rows["FPS"]        = round(self._fps, 1)
         rows["plot Hz"]    = round(self._plot_hz, 1)
         rows["iters/s"]    = round(self._iters_per_sec, 1)
+        rows["abs sim t"]  = round(self._abs_sim_time, 3)
 
         self._telemetry_table.update(rows)
 
@@ -209,7 +222,7 @@ class ViewerWindow(QMainWindow):
                 latest = self._plot_q.get_nowait()
                 n_drained += 1
             if latest is not None:
-                self._scalar_plot.update_data(sim_time, latest)
+                self._scalar_plot.update_data(self._abs_sim_time, latest)
                 self._plot_ctr += 1
             print(f"        drained={n_drained:3}")
 
