@@ -137,6 +137,11 @@ class ViewerWindow(QMainWindow):
         self._iters_prev_time = time.perf_counter()
         self._iters_per_sec   = 0.0
 
+        # ── physics-state push throughput ----------------------------------- #
+        self._pushes_prev      = 0
+        self._pushes_prev_time = time.perf_counter()
+        self._pushes_per_sec   = 0.0
+
     # ───────────────────────────────────────────────────────────────────── #
     def _plot_for_group(self, group: str) -> ScalarPlot:
         if group in self._plots:
@@ -197,12 +202,15 @@ class ViewerWindow(QMainWindow):
         # -- 2a. pull parent-provided rows ----------------------------------- #
         rows: dict[str, float] = {}
         iters_value: int | None = None
+        pushes_value: int | None = None
 
         while not self._table_q.empty():
             msg = self._table_q.get_nowait()
             rows.update(msg)
             if "iters" in msg:
                 iters_value = int(msg["iters"])
+            if "pushes" in msg:
+                pushes_value = int(msg["pushes"])
 
         # -- 2b. compute iters / sec (GUI-side) ------------------------------ #
         if iters_value is not None:
@@ -213,10 +221,20 @@ class ViewerWindow(QMainWindow):
             self._iters_prev      = iters_value
             self._iters_prev_time = now
 
+        # -- 2b-bis.  compute pushes / sec ----------------------------------- #
+        if pushes_value is not None:
+            now = time.perf_counter()
+            dt  = now - self._pushes_prev_time
+            if dt > 0:
+                self._pushes_per_sec = (pushes_value - self._pushes_prev) / dt
+            self._pushes_prev      = pushes_value
+            self._pushes_prev_time = now
+
         # -- 2c. GUI-local metrics ------------------------------------------ #
         rows["FPS"]        = round(self._fps, 1)
         rows["plot Hz"]    = round(self._plot_hz, 1)
         rows["iters/s"]    = round(self._iters_per_sec, 1)
+        rows["pushes/s"]   = round(self._pushes_per_sec, 1)
         rows["abs sim t"]  = round(self._abs_sim_time, 3)
 
         self._telemetry_table.update(rows)

@@ -98,6 +98,9 @@ class Viewer:
         self._table_q   = make_metrics_queue()
         self._plot_q    = make_metrics_queue()
 
+        # ── NEW: physics-state push counter -------------------------------- #
+        self._push_ctr  = 0            # total calls to .push_state()
+
         # ---------- spawn GUI process ---------------------------------- #
         self._proc = ctx.Process(
             target=run_worker,
@@ -139,6 +142,10 @@ class Viewer:
         xfrc_applied: np.ndarray | None = None,
     ) -> None:
         """Copy MuJoCo state into shared rings (qpos / qvel)."""
+
+        # ① keep local running total (cheap & thread-safe under GIL)
+        self._push_ctr += 1
+
         self._rings["qpos"].push(qpos)
         self._rings["qvel"].push(qvel)
         self._rings["sim_time"].push(np.asarray([sim_time], dtype=np.float64))
@@ -146,6 +153,10 @@ class Viewer:
         if xfrc_applied is not None:
             # If you later add a ring for forces, push here
             pass
+
+        # ② stream the counter to GUI – exactly the same path used for "iters"
+        #    (small dict → bounded multiprocessing.Queue)
+        self._table_q.put({"pushes": self._push_ctr})
 
     # ------------------------------------------------------------------ #
     #  New convenience helpers

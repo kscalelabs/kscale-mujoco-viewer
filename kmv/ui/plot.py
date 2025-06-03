@@ -31,7 +31,7 @@ class ScalarPlot(QWidget):
     def __init__(
         self,
         *,
-        history: int = 1_000,
+        history: int = 1_00,
         max_curves: int = 32,
         parent=None,
     ) -> None:
