@@ -91,11 +91,6 @@ def main() -> None:
                 }
             )
 
-            # SIM counter - confirms producer is running at 50 Hz
-            if sim_it % 500 == 0:
-                print(f"[SIM] it={sim_it:6} t={data.time:6.2f}")
-
-            # ------------------------------------------------------------------
             # (6) sleep so that sim-time == wall-time
             # target wall-time for *next* physics step:
             target_wall = t0_wall + (data.time + dt)
