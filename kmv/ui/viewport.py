@@ -180,16 +180,26 @@ class GLViewport(QOpenGLWidget):
         dx, dy = x - self._last_x, y - self._last_y
         self._last_x, self._last_y = x, y
 
-        if self.pert.active:   # dragging with Ctrl pressed
-            action = (
-                mujoco.mjtMouse.mjMOUSE_ROTATE_H
-                if self.pert.active == mujoco.mjtPertBit.mjPERT_ROTATE
-                else mujoco.mjtMouse.mjMOUSE_MOVE_H
-            )
+        if self.pert.active:                               # Ctrl-drag → perturb
             height = max(1, self.height())
+
+            if self.pert.active == mujoco.mjtPertBit.mjPERT_TRANSLATE:
+                # ---------------------------------------------------------- #
+                # Ctrl-drag           → vertical translate  (MOVE_V)
+                # Shift + Ctrl-drag   → horizontal translate (MOVE_H)
+                # ---------------------------------------------------------- #
+                action = (
+                    mujoco.mjtMouse.mjMOUSE_MOVE_H              # ⇧ held  → horizontal
+                    if (ev.modifiers() & Qt.ShiftModifier)
+                    else mujoco.mjtMouse.mjMOUSE_MOVE_V          # default → vertical
+                )
+            else:                                               # rotate branch
+                action = mujoco.mjtMouse.mjMOUSE_ROTATE_H       # unchanged
+
             mujoco.mjv_movePerturb(
                 self.model, self._data,
-                action, dx / height, dy / height,
+                action,
+                dx / height, dy / height,
                 self.scene, self.pert,
             )
             self.update()

@@ -67,7 +67,7 @@ class _TableModel(QAbstractTableModel):
 #  Convenience widget (model + QTableView)
 # --------------------------------------------------------------------------- #
 
-class TelemetryTable(QTableView):
+class ViewerStatsTable(QTableView):
     """
     Thin wrapper that owns its `_TableModel` and exposes a single
     `.update(metrics: dict)` method.

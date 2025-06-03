@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QTableView,
+    QLabel,
 )
 # QAction actually sits in QtGui
 from PySide6.QtGui import QAction
@@ -34,7 +35,7 @@ from PySide6.QtGui import QAction
 from kmv.ipc.state       import SharedArrayRing
 from kmv.ui.viewport     import GLViewport
 from kmv.ui.plot         import ScalarPlot
-from kmv.ui.table        import TelemetryTable
+from kmv.ui.table        import ViewerStatsTable
 
 
 class ViewerWindow(QMainWindow):
@@ -94,7 +95,23 @@ class ViewerWindow(QMainWindow):
         self.setCentralWidget(self._viewport)
 
         # -- status bar ------------------------------------------------------- #
-        self.setStatusBar(QStatusBar(self))
+        bar = QStatusBar(self)
+        # add 8-pixel padding on the left (tweak the number to taste)
+        bar.setContentsMargins(16, 0, 0, 0)
+        bar.setSizeGripEnabled(False)
+        self.setStatusBar(bar)
+
+        def _add_status(label: str) -> QLabel:
+            w = QLabel(label, self)
+            w.setMinimumWidth(96)          # stable layout
+            bar.addWidget(w)
+            return w
+
+        self._lbl_fps    = _add_status("FPS: –")
+        self._lbl_phys   = _add_status("Phys Iters/s: –")
+        self._lbl_simt   = _add_status("Sim Time: –")
+        self._lbl_wallt  = _add_status("Wall Time: –")
+        self._lbl_reset  = _add_status("Resets: 0")
 
         # -- live scalar plot -------------------------------------------------- #
         self._plots: dict[str, ScalarPlot] = {}
@@ -107,11 +124,24 @@ class ViewerWindow(QMainWindow):
         menubar.setNativeMenuBar(False)      # ← keep it inside the window on macOS
         self._plots_menu = menubar.addMenu("&Plots")
 
+        # ------------------------------------------------------------------ #
+        #  NEW  menu just for the Telemetry table
+        # ------------------------------------------------------------------ #
+        self._telemetry_menu = menubar.addMenu("&Viewer Stats")
+
         # -- telemetry table --------------------------------------------------- #
-        self._telemetry_table = TelemetryTable(self)      # <-- widget, not model
-        table_dock = QDockWidget("Telemetry", self)
+        self._telemetry_table = ViewerStatsTable(self)      # <-- widget, not model
+        table_dock = QDockWidget("Viewer Stats", self)
         table_dock.setWidget(self._telemetry_table)
         self.addDockWidget(Qt.RightDockWidgetArea, table_dock)
+        table_dock.hide()                                 # start hidden
+
+        #   menu ↔ dock synchronisation (checkbox behaviour)
+        telem_action = QAction("Show viewer stats", self, checkable=True)
+        telem_action.setChecked(False)                    # unchecked = hidden
+        telem_action.toggled.connect(table_dock.setVisible)
+        table_dock.visibilityChanged.connect(telem_action.setChecked)
+        self._telemetry_menu.addAction(telem_action)
 
         self.show()
 
@@ -241,8 +271,8 @@ class ViewerWindow(QMainWindow):
         while not self._table_q.empty():
             msg = self._table_q.get_nowait()
             rows.update(msg)
-            if "phys iters" in msg:
-                phys_iters_value = int(msg["phys iters"])
+            if "Phys Iters" in msg:
+                phys_iters_value = int(msg["Phys Iters"])
 
         # -- 2b. compute phys iters / sec ----------------------------------- #
         if phys_iters_value is not None:
@@ -254,16 +284,25 @@ class ViewerWindow(QMainWindow):
             self._phys_iters_prev_time = now
 
         # -- 2c. GUI-local metrics ------------------------------------------ #
-        rows["FPS"]        = round(self._fps, 1)
-        rows["plot Hz"]    = round(self._plot_hz, 1)
-        rows["phys iters/s"]   = round(self._phys_iters_per_sec, 1)
-        rows["abs sim t"]  = round(self._abs_sim_time, 3)
-        rows["sim t"]      = round(sim_time, 3)              # NEW
-        rows["wall t"]     = round(wall_elapsed, 2)          # NEW
-        rows["resets"]     = self._reset_count               # NEW
-        rows["× real-time"] = round(realtime_x, 2)           # NEW
+        rows["Viewer FPS"]        = round(self._fps, 1)
+        rows["Plot FPS"]    = round(self._plot_hz, 1)
+        rows["Phys Iters/s"]   = round(self._phys_iters_per_sec, 1)
+        rows["Abs Sim Time"]  = round(self._abs_sim_time, 3)
+        rows["Sim Time"]      = round(sim_time, 3)              # NEW
+        rows["Wall Time"]     = round(wall_elapsed, 2)          # NEW
+        rows["Reset Count"]     = self._reset_count               # NEW
+        rows["Sim Time / Real Time"] = round(realtime_x, 2)           # NEW
 
         self._telemetry_table.update(rows)
+
+        # ------------------------------------------------------------------ #
+        #  Status-bar text refresh (cheap – a few QString ops per frame)
+        # ------------------------------------------------------------------ #
+        self._lbl_fps.setText(f"FPS: {self._fps:5.1f}")
+        self._lbl_phys.setText(f"Phys/s: {self._phys_iters_per_sec:5.1f}")
+        self._lbl_simt.setText(f"Sim t: {sim_time:6.2f}")
+        self._lbl_wallt.setText(f"Wall t: {wall_elapsed:6.2f}")
+        self._lbl_reset.setText(f"Resets: {self._reset_count}")
 
         # -- 2b. update scalar plots (one panel per group) --------------- #
         if self._enable_plots:

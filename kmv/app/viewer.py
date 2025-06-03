@@ -156,7 +156,7 @@ class QtViewer:
 
         # ② stream the counter to GUI – exactly the same path used for "iters"
         #    (small dict → bounded multiprocessing.Queue)
-        self._table_q.put({"phys iters": self._push_ctr})
+        self._table_q.put({"Phys Iters": self._push_ctr})
 
     # ------------------------------------------------------------------ #
     #  New convenience helpers
