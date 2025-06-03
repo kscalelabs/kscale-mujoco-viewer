@@ -41,14 +41,40 @@ Scalars = Mapping[str, float]          # alias for duck-typed dict-like objects
 
 
 # -----------------------------------------------------------------------------#
-# 3.  Public literals
+# 3.  Message types for IPC communication
+# -----------------------------------------------------------------------------#
+
+@dataclass
+class Msg:
+    """Base message type."""
+    pass
+
+@dataclass
+class ForcePacket(Msg):
+    """Force data from GUI interactions."""
+    forces: np.ndarray
+
+@dataclass
+class TelemetryPacket(Msg):
+    """Telemetry data for the stats table."""
+    rows: Mapping[str, float]
+
+@dataclass
+class PlotPacket(Msg):
+    """Plot data for scalar visualizations."""
+    group: str
+    scalars: Mapping[str, float]
+
+
+# -----------------------------------------------------------------------------#
+# 4.  Public literals
 # -----------------------------------------------------------------------------#
 
 RenderMode = Literal["window", "offscreen"]  # kept for backwards compatibility
 
 
 # -----------------------------------------------------------------------------#
-# 4.  Viewer configuration (new)
+# 5.  Viewer configuration (new)
 # -----------------------------------------------------------------------------#
 
 @dataclass(frozen=True, slots=True)

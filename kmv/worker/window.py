@@ -38,6 +38,9 @@ from multiprocessing.connection import Connection
 from kmv.ui.viewport     import GLViewport
 from kmv.ui.plot         import ScalarPlot
 from kmv.ui.table        import ViewerStatsTable
+from kmv.core.controller import RenderLoop
+from kmv.core.types      import TelemetryPacket, PlotPacket
+import queue
 
 
 class ViewerWindow(QMainWindow):
@@ -80,6 +83,7 @@ class ViewerWindow(QMainWindow):
         self._rings      = rings
         self._table_q    = table_q
         self._plot_q     = plot_q
+        self._ctrl_send  = ctrl_send
 
         # -- central OpenGL viewport ----------------------------------------- #
         self._viewport = GLViewport(
@@ -95,16 +99,15 @@ class ViewerWindow(QMainWindow):
         )
         self.setCentralWidget(self._viewport)
 
-        # -- status bar ------------------------------------------------------- #
+        # -- status-bar -------------------------------------------------------- #
         bar = QStatusBar(self)
-        # add 8-pixel padding on the left (tweak the number to taste)
         bar.setContentsMargins(16, 0, 0, 0)
         bar.setSizeGripEnabled(False)
         self.setStatusBar(bar)
 
         def _add_status(label: str) -> QLabel:
             w = QLabel(label, self)
-            w.setMinimumWidth(96)          # stable layout
+            w.setMinimumWidth(96)
             bar.addWidget(w)
             return w
 
@@ -146,12 +149,6 @@ class ViewerWindow(QMainWindow):
 
         self.show()
 
-        # ── absolute-time bookkeeping -------------------------------- #
-        self._sim_prev      = 0.0          # previous sim_time sample
-        self._sim_offset    = 0.0          # accumulated time before last reset
-        self._abs_sim_time  = 0.0          # latest absolute sim time
-        self._reset_tol     = 1e-9         # tiny epsilon to ignore FP jitter
-
         # ── apply *initial camera* parameters (optional) ------------------ #
         cam = self._viewport.cam
         if cfg.camera_distance  is not None: cam.distance  = cfg.camera_distance
@@ -162,23 +159,35 @@ class ViewerWindow(QMainWindow):
             cam.trackbodyid = cfg.track_body_id
             cam.type        = mujoco.mjtCamera.mjCAMERA_TRACKING
 
-        # ── self-computed performance metrics ──────────────────────────────
-        self._fps_timer    = time.perf_counter()
-        self._frame_ctr    = 0
-        self._fps          = 0.0          # latest 1-s average
+        # call in __init__ right after last field is set
+        self.__post_init_render_loop()
 
-        self._plot_timer   = time.perf_counter()
-        self._plot_ctr     = 0
-        self._plot_hz      = 0.0          # latest 1-s average
+    def __post_init_render_loop(self):
+        def _pop(q):
+            try:
+                return q.get_nowait()
+            except queue.Empty:
+                return None
 
-        # ── physics-state push throughput ----------------------------------- #
-        self._phys_iters_prev      = 0
-        self._phys_iters_prev_time = time.perf_counter()
-        self._phys_iters_per_sec   = 0.0
+        def get_table_packet():
+            if (msg := _pop(self._table_q)) is not None:
+                return TelemetryPacket(rows=msg)
+            return None
 
-        # ── NEW: wall-clock & reset tracking -------------------------------- #
-        self._wall_start   : float | None = None   # set on first frame
-        self._reset_count  = 0                    # increments on every sim reset
+        def get_plot_packet():
+            if (msg := _pop(self._plot_q)) is not None:
+                return PlotPacket(group=msg.get("group", "default"),
+                                   scalars=msg["scalars"])
+            return None
+        
+        self._rl = RenderLoop(
+            model=self._model,
+            data=self._data,
+            rings=self._rings,
+            on_forces=lambda a: self._ctrl_send.send(("forces", a)),
+            get_table=get_table_packet,
+            get_plot=get_plot_packet,
+        )
 
     # ───────────────────────────────────────────────────────────────────── #
     def _plot_for_group(self, group: str) -> ScalarPlot:
@@ -212,114 +221,27 @@ class ViewerWindow(QMainWindow):
         return plot
 
     # ------------------------------------------------------------------ #
-    #  Timer callback
+    # public – called by QTimer
     # ------------------------------------------------------------------ #
-
     def step_and_draw(self) -> None:
-        """
-        Called ~60 Hz by a `QTimer` in `worker.entrypoint.run_worker`.
-        1. Pull newest qpos/qvel from shared memory.
-        2. Run `mj_forward` so contacts are fresh for rendering.
-        3. Drain metrics queue → update plot & table.
-        4. Trigger an OpenGL repaint.
-        """
-        # GUI counter - lets you watch GUI cadence and instantaneous backlog
-        now_gui = time.perf_counter()
-        try:
-            backlog = self._plot_q._unfinished_tasks  # cheap & safe; works on mac
-        except AttributeError:
-            backlog = -1
+        """One GUI frame (~60 Hz) – now only 5 lines!"""
+        self._rl.tick()                         # 1. pure-Python update
 
+        # 2. full table
+        self._telemetry_table.update(self._rl._last_table)
 
-        # -- 1. shared-memory read ------------------------------------------ #
-        self._frame_ctr += 1                         # count every repaint
-        now = time.perf_counter()
-        if (now - self._fps_timer) >= 1.0:
-            self._fps       = self._frame_ctr / (now - self._fps_timer)
-            self._frame_ctr = 0
-            self._fps_timer = now
+        #   status-bar mirrors
+        self._lbl_fps.setText(  f"FPS: {self._rl.fps:5.1f}")
+        self._lbl_phys.setText( f"Phys/s: {self._rl.phys_iters_per_sec:5.1f}")
+        self._lbl_simt.setText( f"Sim t: {self._rl.sim_time_abs:6.2f}")
+        self._lbl_wallt.setText(f"Wall t: {self._rl._last_table.get('Wall Time', 0):6.2f}")
+        self._lbl_reset.setText(f"Resets: {self._rl.reset_count}")
 
-        qpos = self._rings["qpos"].latest()
-        qvel = self._rings["qvel"].latest()
-        sim_time = float(self._rings["sim_time"].latest()[0])
-
-        # ---- absolute sim time (handles resets) --------------------- #
-        if sim_time < self._sim_prev - self._reset_tol:      # reset detected
-            self._sim_offset += self._sim_prev
-            self._reset_count += 1                           # ← NEW counter
-        self._sim_prev     = sim_time
-        self._abs_sim_time = self._sim_offset + sim_time
-
-        # ---- wall-clock bookkeeping --------------------------------- #
-        if self._wall_start is None:                         # first frame
-            self._wall_start = now_gui
-        wall_elapsed = now_gui - self._wall_start
-        realtime_x   = (
-            self._abs_sim_time / max(wall_elapsed, 1e-9)
-            if wall_elapsed > 0.0 else 0.0
-        )
-
-        self._data.qpos[:] = qpos
-        self._data.qvel[:] = qvel
-        self._data.time = sim_time
-        mujoco.mj_forward(self._model, self._data)
-
-        # -- 2a. pull parent-provided rows ----------------------------------- #
-        rows: dict[str, float] = {}
-        phys_iters_value: int | None = None
-
-        while not self._table_q.empty():
-            msg = self._table_q.get_nowait()
-            rows.update(msg)
-            if "Phys Iters" in msg:
-                phys_iters_value = int(msg["Phys Iters"])
-
-        # -- 2b. compute phys iters / sec ----------------------------------- #
-        if phys_iters_value is not None:
-            now = time.perf_counter()
-            dt  = now - self._phys_iters_prev_time
-            if dt > 0:
-                self._phys_iters_per_sec = (phys_iters_value - self._phys_iters_prev) / dt
-            self._phys_iters_prev      = phys_iters_value
-            self._phys_iters_prev_time = now
-
-        # -- 2c. GUI-local metrics ------------------------------------------ #
-        rows["Viewer FPS"]        = round(self._fps, 1)
-        rows["Plot FPS"]    = round(self._plot_hz, 1)
-        rows["Phys Iters/s"]   = round(self._phys_iters_per_sec, 1)
-        rows["Abs Sim Time"]  = round(self._abs_sim_time, 3)
-        rows["Sim Time"]      = round(sim_time, 3)              # NEW
-        rows["Wall Time"]     = round(wall_elapsed, 2)          # NEW
-        rows["Reset Count"]     = self._reset_count               # NEW
-        rows["Sim Time / Real Time"] = round(realtime_x, 2)           # NEW
-
-        self._telemetry_table.update(rows)
-
-        # ------------------------------------------------------------------ #
-        #  Status-bar text refresh (cheap – a few QString ops per frame)
-        # ------------------------------------------------------------------ #
-        self._lbl_fps.setText(f"FPS: {self._fps:5.1f}")
-        self._lbl_phys.setText(f"Phys/s: {self._phys_iters_per_sec:5.1f}")
-        self._lbl_simt.setText(f"Sim t: {sim_time:6.2f}")
-        self._lbl_wallt.setText(f"Wall t: {wall_elapsed:6.2f}")
-        self._lbl_reset.setText(f"Resets: {self._reset_count}")
-
-        # -- 2b. update scalar plots (one panel per group) --------------- #
+        # 3. forward *all* groups
         if self._enable_plots:
-            n_drained = 0
-            while not self._plot_q.empty():
-                msg      = self._plot_q.get_nowait()
-                group    = msg.get("group", "default")
-                scalars  = msg["scalars"]
-                plot     = self._plot_for_group(group)
-                plot.update_data(self._abs_sim_time, scalars)
-                n_drained += 1
-            self._plot_ctr += n_drained
+            for group, scalars in self._rl._plots_latest.items():
+                plot = self._plot_for_group(group)
+                plot.update_data(self._rl.sim_time_abs, scalars)
 
-        if (now - self._plot_timer) >= 1.0:
-            self._plot_hz   = self._plot_ctr / (now - self._plot_timer)
-            self._plot_ctr  = 0
-            self._plot_timer = now
-
-        # -- 3. repaint ------------------------------------------------------ #
-        self._viewport.update()   # Qt will schedule paintGL()
+        # 4. finally trigger paint
+        self._viewport.update()
