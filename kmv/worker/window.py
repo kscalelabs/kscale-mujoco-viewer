@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 from typing import Mapping
+from kmv.core.types import ViewerConfig
 
 import mujoco
 import numpy as np
@@ -53,23 +54,20 @@ class ViewerWindow(QMainWindow):
         *,
         table_q,
         plot_q,
-        view_opts: dict[str, object] | None = None,
+        view_conf: ViewerConfig,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        opts = view_opts or {}
+        cfg = view_conf
 
-        # ── generic opts -------------------------------------------------- #
-        width         = int(opts.get("width", 900))
-        height        = int(opts.get("height", 550))
-        enable_plots  = bool(opts.get("enable_plots", True))
+        width, height   = cfg.width, cfg.height
+        enable_plots    = cfg.enable_plots
 
-        # ── visual flags -------------------------------------------------- #
-        shadow        = bool(opts.get("shadow",        False))
-        reflection    = bool(opts.get("reflection",    False))
-        contact_force = bool(opts.get("contact_force", False))
-        contact_point = bool(opts.get("contact_point", False))
-        inertia       = bool(opts.get("inertia",       False))
+        shadow          = cfg.shadow
+        reflection      = cfg.reflection
+        contact_force   = cfg.contact_force
+        contact_point   = cfg.contact_point
+        inertia         = cfg.inertia
 
         self.resize(width, height)
         self.setWindowTitle("KMV Viewer")
@@ -153,13 +151,12 @@ class ViewerWindow(QMainWindow):
 
         # ── apply *initial camera* parameters (optional) ------------------ #
         cam = self._viewport.cam
-        if "camera_distance"  in opts: cam.distance  = float(opts["camera_distance"])
-        if "camera_azimuth"   in opts: cam.azimuth   = float(opts["camera_azimuth"])
-        if "camera_elevation" in opts: cam.elevation = float(opts["camera_elevation"])
-        if "camera_lookat"    in opts:
-            cam.lookat[:] = np.asarray(opts["camera_lookat"], dtype=np.float64)
-        if opts.get("track_body_id") is not None:
-            cam.trackbodyid = int(opts["track_body_id"])
+        if cfg.camera_distance  is not None: cam.distance  = cfg.camera_distance
+        if cfg.camera_azimuth   is not None: cam.azimuth   = cfg.camera_azimuth
+        if cfg.camera_elevation is not None: cam.elevation = cfg.camera_elevation
+        if cfg.camera_lookat    is not None: cam.lookat[:] = np.asarray(cfg.camera_lookat, dtype=np.float64)
+        if cfg.track_body_id    is not None:
+            cam.trackbodyid = cfg.track_body_id
             cam.type        = mujoco.mjtCamera.mjCAMERA_TRACKING
 
         # ── self-computed performance metrics ──────────────────────────────

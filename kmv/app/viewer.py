@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Mapping, Sequence, Literal, Callable
+import dataclasses
 
 import mujoco
 import numpy as np
@@ -25,7 +26,7 @@ import time
 
 import multiprocessing as mp
 
-from kmv.core.types import RenderMode
+from kmv.core.types import RenderMode, ViewerConfig
 from kmv.core.buffer import RingBuffer          # used for off-screen mode
 from kmv.core import schema                     # declares default streams
 from kmv.ipc.state import SharedArrayRing
@@ -77,12 +78,45 @@ class QtViewer:
         mj_model: mujoco.MjModel,
         *,
         mode: RenderMode = "window",
-        **view_opts,
+        # ↓ all public knobs – defaults match ViewerConfig
+        width: int  = 900,
+        height: int = 550,
+        enable_plots: bool = True,
+
+        shadow: bool        = False,
+        reflection: bool    = False,
+        contact_force: bool = False,
+        contact_point: bool = False,
+        inertia: bool       = False,
+
+        camera_distance : float | None = None,
+        camera_azimuth  : float | None = None,
+        camera_elevation: float | None = None,
+        camera_lookat   : tuple[float, float, float] | None = None,
+        track_body_id   : int | None = None,
     ) -> None:
         if mode not in ("window", "offscreen"):
             raise ValueError(f"unknown render mode {mode!r}")
 
-        self._mode = mode
+        # ---- one-line conversion to canonical config --------------------- #
+        config = ViewerConfig(
+            width           = width,
+            height          = height,
+            enable_plots    = enable_plots,
+            shadow          = shadow,
+            reflection      = reflection,
+            contact_force   = contact_force,
+            contact_point   = contact_point,
+            inertia         = inertia,
+            camera_distance = camera_distance,
+            camera_azimuth  = camera_azimuth,
+            camera_elevation= camera_elevation,
+            camera_lookat   = camera_lookat,
+            track_body_id   = track_body_id,
+        )
+
+        self._mode   = mode
+        self._config = config        # store for later
         self._tmp_mjb_path = _compile_model_to_mjb(mj_model)
 
         # ---------- shared memory for bulk state ----------------------- #
@@ -111,7 +145,7 @@ class QtViewer:
                 self._ctrl.sender(),       # control pipe
                 self._table_q,             # NEW
                 self._plot_q,              # NEW
-                view_opts,                 # dict with width, shadow…
+                config,                    # dataclass – picklable
             ),
             daemon=True,
         )

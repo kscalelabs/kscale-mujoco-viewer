@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 import pathlib
 from typing import Any
+from kmv.core.types import ViewerConfig
 import signal
 
 import mujoco
@@ -35,7 +36,7 @@ def run_worker(
     ctrl_send: Connection,       # write-only end (forces → parent, shutdown)
     table_q:  Queue,             # NEW
     plot_q:   Queue,             # NEW
-    view_opts: dict[str, Any],   # forwarded viewer flags
+    view_conf: ViewerConfig,     # forwarded viewer config
 ) -> None:
     """
     Spawned via `multiprocessing.Process( target=run_worker, ... )`.
@@ -58,7 +59,7 @@ def run_worker(
     app    = QApplication.instance() or QApplication(sys.argv)
     window = ViewerWindow(model, data, rings,
                           table_q=table_q, plot_q=plot_q,
-                          view_opts=view_opts)
+                          view_conf=view_conf)
     window._ctrl_send = ctrl_send      # expose pipe to viewport for forces
 
     # ── let the parent know the GUI is ready --------------------------- #

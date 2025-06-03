@@ -7,7 +7,7 @@ No Qt, no multiprocessing imports allowed here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Mapping
+from typing import Literal, Mapping, Tuple, Optional
 
 import numpy as np
 
@@ -45,3 +45,29 @@ Scalars = Mapping[str, float]          # alias for duck-typed dict-like objects
 # -----------------------------------------------------------------------------#
 
 RenderMode = Literal["window", "offscreen"]  # kept for backwards compatibility
+
+
+# -----------------------------------------------------------------------------#
+# 4.  Viewer configuration (new)
+# -----------------------------------------------------------------------------#
+
+@dataclass(frozen=True, slots=True)
+class ViewerConfig:
+    # window & widgets
+    width: int  = 900
+    height: int = 550
+    enable_plots: bool = True
+
+    # MuJoCo visual flags
+    shadow: bool        = False
+    reflection: bool    = False
+    contact_force: bool = False
+    contact_point: bool = False
+    inertia: bool       = False
+
+    # camera (all optional ⇒ keep current free camera)
+    camera_distance : Optional[float]                = None
+    camera_azimuth  : Optional[float]                = None
+    camera_elevation: Optional[float]                = None
+    camera_lookat   : Optional[Tuple[float, float, float]] = None
+    track_body_id   : Optional[int]                  = None
