@@ -25,6 +25,9 @@ from PySide6.QtCore    import QTimer
 from kmv.ipc.shared_ring       import SharedMemoryRing
 from kmv.worker.window   import ViewerWindow      # will be implemented next
 
+TARGET_FPS = 60
+GUI_TIMER_INTERVAL_MS = round(1000 / TARGET_FPS)
+
 
 # --------------------------------------------------------------------------- #
 #  run_worker – public entrypoint
@@ -77,7 +80,7 @@ def run_worker(
 
     # ---- 4.  Graphics timer (≈60 Hz) -------------------------------- #
     gfx_timer = QTimer()
-    gfx_timer.setInterval(16)
+    gfx_timer.setInterval(GUI_TIMER_INTERVAL_MS)
     gfx_timer.timeout.connect(window.step_and_draw)
     gfx_timer.start()
 
