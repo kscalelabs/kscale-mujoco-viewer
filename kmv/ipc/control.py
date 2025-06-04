@@ -1,7 +1,5 @@
 """Inter-process-communication for lower bandwidth control messages."""
 
-from __future__ import annotations
-
 import multiprocessing as mp
 from multiprocessing.connection import Connection
 from typing import Any

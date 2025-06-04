@@ -5,8 +5,6 @@ Defines:
 - `InProcessRing` - deque-based implementation for threads in one process
 """
 
-from __future__ import annotations
-
 from collections import deque
 from threading import Lock
 from typing import (

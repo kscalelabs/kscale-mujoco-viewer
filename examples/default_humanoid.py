@@ -4,8 +4,6 @@ Runs MuJoCo's default humanoid for a while and streams qpos/qvel + live telemetr
 to `kmv.app.viewer.Viewer`.  The GUI should stay ~60 FPS even if we sleep.
 """
 
-from __future__ import annotations
-
 import logging
 import time
 from pathlib import Path

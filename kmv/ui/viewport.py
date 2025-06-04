@@ -4,8 +4,6 @@ Lives entirely in the GUI thread: renders the current `MjData`, handles mouse
 interaction, and streams drag forces back to the parent process.
 """
 
-from __future__ import annotations
-
 from typing import Callable, Optional
 
 import mujoco

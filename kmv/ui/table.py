@@ -1,7 +1,5 @@
 """Simple two-column Qt table for live telemetry."""
 
-from __future__ import annotations
-
 from typing import Any, Mapping
 
 from PySide6.QtCore import (

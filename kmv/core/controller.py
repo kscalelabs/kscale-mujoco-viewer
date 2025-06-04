@@ -5,8 +5,6 @@ streams from shared-memory rings, drains metric queues, and keeps a rolling
 set of timing / telemetry values that the Qt widgets display.
 """
 
-from __future__ import annotations
-
 import time
 from typing import Callable, Mapping
 

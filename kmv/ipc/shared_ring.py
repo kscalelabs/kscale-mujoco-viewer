@@ -5,8 +5,6 @@ block so a physics loop and GUI process can exchange high-rate NumPy arrays
 without pickling or extra copies.
 """
 
-from __future__ import annotations
-
 import ctypes
 import gc
 import warnings

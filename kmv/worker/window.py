@@ -4,8 +4,6 @@ Hosts an OpenGL viewport, optional scalar plots, and a live telemetry table,
 fed by shared-memory rings and metric queues from the parent process.
 """
 
-from __future__ import annotations
-
 import queue
 from multiprocessing import Queue
 from multiprocessing.connection import Connection

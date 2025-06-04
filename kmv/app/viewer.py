@@ -5,8 +5,6 @@ Exposes two viewer handles:
 • DefaultMujocoViewer: Simple headless off-screen renderer for video.
 """
 
-from __future__ import annotations
-
 import multiprocessing as mp
 import tempfile
 import time

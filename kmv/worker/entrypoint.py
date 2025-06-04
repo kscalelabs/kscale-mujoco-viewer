@@ -4,8 +4,6 @@ Executed in a forked process by `QtViewer`; loads the model, maps the
 shared-memory rings, spins up the `ViewerWindow`, and runs the Qt event loop.
 """
 
-from __future__ import annotations
-
 import pathlib
 import signal
 import sys
