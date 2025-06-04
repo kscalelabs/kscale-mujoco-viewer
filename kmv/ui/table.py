@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PySide6.QtCore import (
+    QAbstractTableModel,
+    QModelIndex,
+    QPersistentModelIndex,
+    Qt,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QTableView,
@@ -24,17 +29,23 @@ class _TableModel(QAbstractTableModel):
         self._rows: list[tuple[str, Any]] = []
         self._known_keys: set[str] = set()
 
-    def rowCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802
+    def rowCount(  # noqa: N802
+        self,
+        parent: QModelIndex | QPersistentModelIndex = QModelIndex(),
+    ) -> int:
         return len(self._rows)
 
-    def columnCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802
+    def columnCount(  # noqa: N802
+        self,
+        parent: QModelIndex | QPersistentModelIndex = QModelIndex(),
+    ) -> int:
         return 2
 
     def data(
         self,
-        index: QModelIndex,
+        index: QModelIndex | QPersistentModelIndex,
         role: int = Qt.ItemDataRole.DisplayRole,
-    ) -> object | None:  # type: ignore[override]  # keep QWidget signature happy
+    ) -> object | None:
         if role != Qt.ItemDataRole.DisplayRole:
             return None
         key, val = self._rows[index.row()]

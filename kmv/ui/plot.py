@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from typing import Dict, Tuple
+from typing import Mapping
 
 import pyqtgraph as pg
 from PySide6.QtWidgets import QVBoxLayout, QWidget
@@ -30,8 +30,8 @@ class ScalarPlot(QWidget):
         self._plot.addLegend(offset=(10, 10))
         layout.addWidget(self._plot)
 
-        self._curves: Dict[str, pg.PlotDataItem] = {}
-        self._buffers: Dict[str, deque[Tuple[float, float]]] = {}
+        self._curves: dict[str, pg.PlotDataItem] = {}
+        self._buffers: dict[str, deque[tuple[float, float]]] = {}
 
         self._palette = [
             "#FF6B6B",
@@ -58,7 +58,7 @@ class ScalarPlot(QWidget):
         self._color_index += 1
         return color
 
-    def update_data(self, t: float, scalars: Dict[str, float]) -> None:
+    def update_data(self, t: float, scalars: Mapping[str, float]) -> None:
         """Append one `(t, value)` sample per scalar and redraw curves."""
         for name, value in scalars.items():
             if name not in self._buffers:
