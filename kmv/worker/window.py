@@ -7,6 +7,7 @@ fed by shared-memory rings and metric queues from the parent process.
 from __future__ import annotations
 
 import queue
+from multiprocessing import Queue
 from multiprocessing.connection import Connection
 from typing import Mapping
 
@@ -41,13 +42,14 @@ class ViewerWindow(QMainWindow):
         data: mujoco.MjData,
         rings: Mapping[str, SharedMemoryRing],
         *,
-        table_q,
-        plot_q,
+        table_q: Queue,
+        plot_q: Queue,
         ctrl_send: Connection,  # NEW
         view_conf: ViewerConfig,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+
         cfg = view_conf
         self.resize(cfg.width, cfg.height)
         self.setWindowTitle("K-Scale MuJoCo Viewer")
@@ -130,21 +132,21 @@ class ViewerWindow(QMainWindow):
         self.__post_init_render_loop()
         self.show()
 
-    def __post_init_render_loop(self):
+    def __post_init_render_loop(self) -> None:
         """Wire shared queues into a `RenderLoop` instance."""
 
-        def _pop(q):
+        def _pop(q: Queue) -> object | None:
             try:
                 return q.get_nowait()
             except queue.Empty:
                 return None
 
-        def get_table_packet():
+        def get_table_packet() -> TelemetryPacket | None:
             if (msg := _pop(self._table_q)) is not None:
                 return TelemetryPacket(rows=msg)
             return None
 
-        def get_plot_packet():
+        def get_plot_packet() -> PlotPacket | None:
             if (msg := _pop(self._plot_q)) is not None:
                 return PlotPacket(group=msg.get("group", "default"), scalars=msg["scalars"])
             return None

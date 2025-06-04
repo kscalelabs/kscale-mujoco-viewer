@@ -11,7 +11,7 @@ from typing import Callable, Optional
 import mujoco
 import numpy as np
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QSurfaceFormat
+from PySide6.QtGui import QMouseEvent, QSurfaceFormat, QWheelEvent
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QWidget
 
@@ -74,11 +74,11 @@ class GLViewport(QOpenGLWidget):
         """
         self._callback = fn
 
-    def initializeGL(self) -> None:
+    def initializeGL(self) -> None:  # noqa: N802
         """Create the MuJoCo rendering context."""
         self._ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_150)
 
-    def paintGL(self) -> None:
+    def paintGL(self) -> None:  # noqa: N802
         """Render a frame and emit drag forces if any."""
         # MuJoCo expects xfrc_applied to be cleared each frame
         self._data.xfrc_applied[:] = 0
@@ -106,7 +106,7 @@ class GLViewport(QOpenGLWidget):
 
         mujoco.mjr_render(rect, self.scene, self._ctx)
 
-    def mousePressEvent(self, ev) -> None:
+    def mousePressEvent(self, ev: QMouseEvent) -> None:  # noqa: N802
         """Start drag or body-perturb interaction (Ctrl-click)."""
         self._mouse_btn = ev.button()
         self._last_x, self._last_y = ev.position().x(), ev.position().y()
@@ -154,7 +154,7 @@ class GLViewport(QOpenGLWidget):
         mujoco.mjv_initPerturb(self.model, self._data, self.scene, self.pert)
         self.update()
 
-    def mouseReleaseEvent(self, _ev) -> None:
+    def mouseReleaseEvent(self, _ev: QMouseEvent) -> None:  # noqa: N802
         """End drag / perturb and send a zero-force flush."""
         self.pert.active = 0
         self._mouse_btn = None
@@ -166,7 +166,7 @@ class GLViewport(QOpenGLWidget):
             zero_xrfc = np.zeros_like(self._data.xfrc_applied)
             self._on_forces(zero_xrfc)
 
-    def mouseMoveEvent(self, ev) -> None:
+    def mouseMoveEvent(self, ev: QMouseEvent) -> None:  # noqa: N802
         """Handle camera orbit, pan, and active perturb motion."""
         x, y = ev.position().x(), ev.position().y()
         dx, dy = x - self._last_x, y - self._last_y
@@ -211,7 +211,7 @@ class GLViewport(QOpenGLWidget):
 
         self.update()
 
-    def wheelEvent(self, ev) -> None:
+    def wheelEvent(self, ev: QWheelEvent) -> None:  # noqa: N802
         """Zoom the free camera in/out."""
         step = np.sign(ev.angleDelta().y())
         zoom_factor = 0.99 if step > 0 else 1.01

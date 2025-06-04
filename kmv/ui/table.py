@@ -20,13 +20,13 @@ class _TableModel(QAbstractTableModel):
         self._rows: list[tuple[str, Any]] = []
         self._known_keys: set[str] = set()
 
-    def rowCount(self, *_) -> int:
+    def rowCount(self, *_: object) -> int:  # noqa: N802 – Qt API requires camelCase
         return len(self._rows)
 
-    def columnCount(self, *_) -> int:
+    def columnCount(self, *_: object) -> int:  # noqa: N802
         return 2
 
-    def data(self, index: QModelIndex, role=Qt.DisplayRole):
+    def data(self, index: QModelIndex, role: Qt.ItemDataRole) -> object | None:
         if role != Qt.DisplayRole:
             return None
         key, val = self._rows[index.row()]

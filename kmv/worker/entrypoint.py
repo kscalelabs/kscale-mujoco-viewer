@@ -57,7 +57,7 @@ def run_worker(
         # Parent already quit – just keep going so Qt can shut down cleanly
         pass
 
-    def _sigterm_handler(_signum: int, _frame) -> None:
+    def _sigterm_handler(_signum: int, _frame: object) -> None:
         app.quit()
 
     signal.signal(signal.SIGTERM, _sigterm_handler)
