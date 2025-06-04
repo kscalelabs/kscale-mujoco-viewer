@@ -2,7 +2,7 @@
 
 Mujoco viewer maintained by K-Scale Labs.
 
-Originally referenced from [mujoco-python-viewer](https://github.com/gaolongsen/mujoco-python-viewer).
+https://github.com/user-attachments/assets/5312fa03-7215-4c1b-9d66-acaa18b96a3c
 
 ## Installation
 
@@ -23,23 +23,33 @@ python examples/default_humanoid.py
 ## Usage
 
 ```python
-import mujoco
-from kmv.viewer import launch_passive
+import mujoco, time
+from kmv.app.viewer import QtViewer
 
-# Load model and create data
-model = mujoco.MjModel.from_xml_path("path/to/model.xml")
-data = mujoco.MjData(model)
+model  = mujoco.MjModel.from_xml_path("path/to/model.xml")
+data   = mujoco.MjData(model)
+viewer = QtViewer(model)
 
-# Run viewer
-with launch_passive(model, data, make_plots=True) as viewer:
-    # Setup camera and other options if needed
-    viewer.setup_camera(render_distance=4.0, render_lookat=[0.0, 0.0, 1.0])
-    
-    while running_simulation:
-        # Update physics
-        mujoco.mj_step(model, data)
-        
-        # Update visualization
-        viewer.update_and_sync()
+while viewer.is_open:
+    mujoco.mj_step(model, data)
+
+    # send state
+    viewer.push_state(data.qpos, data.qvel, sim_time=data.time)
+
+    # send a few scalars to the “Debug” plot group
+    viewer.push_plot_metrics(
+        scalars={
+            "qpos0": float(data.qpos[0]),
+            "qvel0": float(data.qvel[0]),
+        },
+        group="Debug",
+    )
+
+    time.sleep(model.opt.timestep)
+
+viewer.close()
 ```
 
+# Acknowledgements
+
+Originally referenced from [mujoco-python-viewer](https://github.com/gaolongsen/mujoco-python-viewer).

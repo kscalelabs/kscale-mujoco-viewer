@@ -1,12 +1,4 @@
-attrs
-imageio
 mujoco
-mujoco_mjx
-numpy
-omegaconf
-Pillow
+PySide6
+pyqtgraph
 colorlogging
-dearpygui
-pyobjc-core>=8.5; platform_system == "Darwin"
-pyobjc-framework-Cocoa>=8.5; platform_system == "Darwin"
-pynput
