@@ -1,13 +1,8 @@
-"""
-`Viewer` – the *only* class your RL / control loop talks to.
+"""Qt-based Mujoco viewer that runs in a separate process.
 
-Responsibilities
-----------------
-* Serialise a compiled `mjModel` to a temp .mjb file.
-* Allocate one shared-memory ring per data stream (qpos, qvel, …).
-* Create a control pipe and a bounded metrics queue.
-* Spawn the GUI process (`worker.entrypoint.run_worker`) with the above handles.
-* Provide ergonomic push / poll helpers for the parent process.
+Exposes two viewer handles:
+• QtViewer: Push physics state & fetch drag forces from the parent.
+• DefaultMujocoViewer: Simple headless off-screen renderer for video.
 """
 
 from __future__ import annotations
@@ -26,7 +21,7 @@ import time
 import multiprocessing as mp
 
 from kmv.core.types import RenderMode, ViewerConfig
-from kmv.core import streams                     # declares default streams
+from kmv.core import streams
 from kmv.ipc.shared_ring import SharedMemoryRing
 from kmv.ipc.control import ControlPipe, make_metrics_queue
 from kmv.worker.entrypoint import run_worker
@@ -41,7 +36,7 @@ def _compile_model_to_mjb(model: mujoco.MjModel) -> Path:
 
 
 def _build_shm_rings(model: mujoco.MjModel) -> dict[str, SharedMemoryRing]:
-    """Create rings for every stream defined in `core.schema`."""
+    """Create rings for every stream defined in `core.streams`."""
     rings: dict[str, SharedMemoryRing] = {}
     for name, shape in streams.default_streams(model).items():
         rings[name] = SharedMemoryRing(create=True, shape=shape)
@@ -49,16 +44,10 @@ def _build_shm_rings(model: mujoco.MjModel) -> dict[str, SharedMemoryRing]:
 
 
 class QtViewer:
-    """
-    High-level out-of-process viewer.
-
-    Usage
-    -----
-    >>> viewer = Viewer(mj_model)
-    >>> while training:
-    ...     mujoco.mj_step(model, data)
-    ...     viewer.push_state(data.qpos, data.qvel, sim_time=data.time)
-    ...     forces = viewer.poll_forces()
+    """Viewer class for the Qt application.
+    
+    Creates a new process in which to run the GUI
+    in order to avoid blocking the main thread.
     """
 
     def __init__(
@@ -103,23 +92,21 @@ class QtViewer:
         )
 
         self._mode   = mode
-        self._config = config        # store for later
+        self._config = config
         self._tmp_mjb_path = _compile_model_to_mjb(mj_model)
-
         self._rings = _build_shm_rings(mj_model)
         shm_cfg = {
             name: {"name": ring.name, "shape": ring.shape}
             for name, ring in self._rings.items()
         }
-
         self._ctrl      = ControlPipe()
         ctx             = mp.get_context("spawn")
         self._table_q   = make_metrics_queue()
         self._plot_q    = make_metrics_queue()
-
         self._push_ctr  = 0
         self._closed = False
 
+        # Start the new GUI process
         self._proc = ctx.Process(
             target=run_worker,
             args=(
@@ -134,14 +121,16 @@ class QtViewer:
         )
         self._proc.start()
 
+        # Wait for the viewer to be ready before continuing
         _t0 = time.perf_counter()
         while True:
             if self._ctrl.poll():
                 tag, _ = self._ctrl.recv()
-                if tag == "ready":
-                    break
-                if tag == "shutdown":
-                    raise RuntimeError("Viewer process terminated during start-up")
+                match tag:
+                    case "ready":
+                        break
+                    case "shutdown":
+                        raise RuntimeError("Viewer process terminated during start-up")
             if (time.perf_counter() - _t0) > 5.0:
                 raise TimeoutError("Viewer did not initialise within 5 s")
             time.sleep(0.01)
@@ -157,22 +146,19 @@ class QtViewer:
         qvel: np.ndarray,
         *,
         sim_time: float | int = 0.0,
-        xfrc_applied: np.ndarray | None = None,
     ) -> None:
         """Copy MuJoCo state into shared rings (qpos / qvel)."""
         if self._closed:
             return
 
         self._push_ctr += 1
-
         self._rings["qpos"].push(qpos)
         self._rings["qvel"].push(qvel)
         self._rings["sim_time"].push(np.asarray([sim_time], dtype=np.float64))
-
         self._table_q.put({"Phys Iters": self._push_ctr})
 
     def push_table_metrics(self, metrics: Mapping[str, float]) -> None:
-        """Send key-value pairs to the telemetry table only."""
+        """Send key-value pairs to the telemetry table."""
         if self._closed:
             return
         self._table_q.put(dict(metrics))
@@ -182,23 +168,16 @@ class QtViewer:
         scalars: Mapping[str, float],
         group: str = "default",
     ) -> None:
-        """
-        Stream a batch of *scalars* belonging to *group*.
-
-        Parameters
-        ----------
-        scalars : mapping {name -> value}
-        group   : name of the panel to plot into ("physics", "reward", …)
-        """
+        """Stream a batch of scalars belonging to a plot group."""
         if self._closed:
             return
         self._plot_q.put({"group": group, "scalars": dict(scalars)})
 
-    def poll_forces(self) -> np.ndarray | None:
-        """
-        Non-blocking.  Returns the latest ``xfrc_applied`` array generated by
-        mouse interaction in the GUI, or ``None`` if nothing new.
-        """
+    def drain_control_pipe(self) -> np.ndarray | None:
+        """Return the latest push forces array.
+        
+        Generated by mouse interaction in the GUI, or ``None`` if nothing new.
+        """        
         if self._closed:
             return None
 
@@ -206,10 +185,11 @@ class QtViewer:
             out = None
             while self._ctrl.poll():
                 tag, payload = self._ctrl.recv()
-                if tag == "forces":
-                    out = payload
-                elif tag == "shutdown":
-                    self.close()
+                match tag:
+                    case "forces":
+                        out = payload
+                    case "shutdown":
+                        self.close()
             return out
 
         except (OSError, EOFError):
@@ -246,7 +226,6 @@ class QtViewer:
 
 
 Callback = Callable[[mujoco.MjModel, mujoco.MjData, mujoco.MjvScene], None]
-
 
 class DefaultMujocoViewer:
     """MuJoCo viewer implementation using offscreen OpenGL context."""

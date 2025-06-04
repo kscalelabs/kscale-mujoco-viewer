@@ -1,8 +1,9 @@
 """
-Generic single-producer / single-consumer ring utilities.
+Lock-light ring buffer helpers.
 
-* `Ring` – structural protocol (type-checker contract)
-* `InProcessRing` – pure-Python deque implementation
+Defines:
+- `Ring` - structural protocol for a single-producer / single-consumer queue
+- `InProcessRing` - deque-based implementation for threads in one process
 """
 
 from __future__ import annotations
@@ -25,21 +26,20 @@ T = TypeVar("T")
 class Ring(Protocol[T]):
     """Minimal API any ring must expose."""
 
-    # producer
     def push(self, item: T) -> None: ...
-    # consumer
     def latest(self) -> Optional[T]: ...
-    # diagnostics
     def __len__(self) -> int: ...
+
     @property
     def push_count(self) -> int: ...
+
     @property
     def pop_count(self) -> int: ...
 
 
 class InProcessRing(Generic[T]):
-    """
-    Lock-light deque ring for threads within a single process.
+    """Thread-safe deque ring for *in-process* producer/consumer work.
+
     Overwrites the oldest element on overflow.
     """
 

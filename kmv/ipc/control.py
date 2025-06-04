@@ -1,14 +1,4 @@
-# kmv/ipc/control.py
-"""
-Tiny wrappers around `multiprocessing` primitives used for *control* traffic:
-
-* `ControlPipe` – one-way, single-producer/single-consumer, low latency.
-* `make_metrics_queue` – bounded `multiprocessing.Queue` for telemetry.
-
-Both classes are deliberately minimal; they add just enough sugar to keep the
-rest of the code clean and to remain start-method agnostic ("spawn", "fork",
-"forkserver" all work).
-"""
+"""Inter-process-communication for lower bandwidth control messages."""
 
 from __future__ import annotations
 
@@ -20,14 +10,10 @@ __all__ = ["ControlPipe", "make_metrics_queue"]
 
 
 class ControlPipe:
-    """
-    One-way pipe: **child writes → parent reads** (or vice-versa – you choose).
+    """Single-direction pipe with leak-proof handle management.
 
-    Why a wrapper?
-    --------------
-    * Ensures we never leak the write-end in the wrong process.
-    * Provides non-blocking poll/recv convenience.
-    * Keeps type hints tidy.
+    The wrapper hands out a **send-only** end for the child and keeps a
+    **recv-only** end in the parent, with convenience helpers for polling.
     """
 
     def __init__(self) -> None:
@@ -36,11 +22,11 @@ class ControlPipe:
         self._send: Connection = child_end
 
     def sender(self) -> Connection:
-        """Return the *send*-only end – pass this to the worker process."""
+        """Return the write-only handle to pass into the worker process."""
         return self._send
 
     def poll(self) -> bool:
-        """`True` if a message is waiting (non-blocking)."""
+        """Non-blocking check: `True` when a message is waiting."""
         try:
             return self._recv.poll()
         except (OSError, EOFError):
@@ -52,14 +38,13 @@ class ControlPipe:
         return tag, payload
 
     def close(self) -> None:
+        """Close the read end held by the parent process."""
         self._recv.close()
 
 
 def make_metrics_queue(maxsize: int = 1024) -> mp.Queue:
-    """
-    Return a *bounded*, process-safe queue for scalar telemetry.
+    """Bounded process-safe queue for tiny telemetry dicts.
 
-    Using `maxsize` avoids unbounded memory growth if the GUI hangs.
-    Feel free to tune the limit; metrics are tiny.
+    Limiting `maxsize` prevents unbounded memory growth if the GUI stalls.
     """
     return mp.get_context().Queue(maxsize=maxsize)

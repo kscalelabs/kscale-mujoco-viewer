@@ -1,9 +1,4 @@
-# kmv/ui/table.py
-"""
-`TelemetryTable` – a two-column Qt model+view for live key-value metrics.
-
-No MuJoCo, no multiprocessing.  Pure PySide6.
-"""
+"""Simple two-column Qt table for live telemetry."""
 
 from __future__ import annotations
 
@@ -14,32 +9,32 @@ from PySide6.QtWidgets import QTableView
 
 
 class _TableModel(QAbstractTableModel):
-    """Internal two-column model:  | Metric | Value |"""
+    """Table class for stats and telemetry.
+    
+    The table is updated with the new metrics, and any keys that are missing
+    in the new metrics are filled with `None` so the row order remains stable.
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._rows: list[tuple[str, Any]] = []
         self._known_keys: set[str] = set()
 
-    def rowCount(self, *_):          # type: ignore[override]
+    def rowCount(self, *_):
         return len(self._rows)
 
-    def columnCount(self, *_):       # type: ignore[override]
+    def columnCount(self, *_):
         return 2
 
-    def data(self, index: QModelIndex, role=Qt.DisplayRole):  # type: ignore[override]
+    def data(self, index: QModelIndex, role=Qt.DisplayRole):
         if role != Qt.DisplayRole:
             return None
         key, val = self._rows[index.row()]
         return key if index.column() == 0 else val
 
     def replace(self, metrics: Mapping[str, Any]) -> None:
-        """
-        Fast full refresh keeping *all* previously seen keys.
+        """Refresh the table with the new metrics."""
 
-        Any key that is missing in *metrics* for this frame is filled with
-        ``None`` so the row order remains stable.
-        """
         self._known_keys.update(metrics.keys())
 
         rows: list[tuple[str, Any]] = []
@@ -52,10 +47,7 @@ class _TableModel(QAbstractTableModel):
 
 
 class ViewerStatsTable(QTableView):
-    """
-    Thin wrapper that owns its `_TableModel` and exposes a single
-    `.update(metrics: dict)` method.
-    """
+    """Helper that Wraps `_TableModel` and adds `.update()`."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -68,5 +60,5 @@ class ViewerStatsTable(QTableView):
         self.setEditTriggers(QTableView.NoEditTriggers)
 
     def update(self, metrics: Mapping[str, Any]) -> None:
-        """Replace all rows with *metrics*."""
+        """Replace all rows with updated metrics."""
         self._model.replace(metrics)

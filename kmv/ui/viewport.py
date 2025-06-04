@@ -1,9 +1,9 @@
-# kmv/ui/viewport.py
-"""
-OpenGL widget that asks MuJoCo to render the current world.
+"""OpenGL viewport widget for MuJoCo scenes.
 
-Pure Qt + MuJoCo; no multiprocessing, no shared-memory.
+Lives entirely in the GUI thread: renders the current `MjData`, handles mouse
+interaction, and streams drag forces back to the parent process.
 """
+
 
 from __future__ import annotations
 
@@ -26,15 +26,7 @@ QSurfaceFormat.setDefaultFormat(_fmt)
 
 
 class GLViewport(QOpenGLWidget):
-    """
-    Read-only MuJoCo viewer living entirely in the Qt (GUI) thread.
-
-    Mouse controls
-    --------------
-    • Drag   : rotate camera
-    • Wheel  : zoom
-    • Ctrl-drag (L/R) : body perturb (rotate / translate) – generates forces
-    """
+    """Read-only MuJoCo viewport running inside the Qt event loop."""
 
     def __init__(
         self,
@@ -51,6 +43,7 @@ class GLViewport(QOpenGLWidget):
     ) -> None:
         super().__init__(parent)
 
+        # MuJoCo scene
         self.model, self._data = model, data
         self.scene = mujoco.MjvScene(model, maxgeom=20_000)
         self.cam   = mujoco.MjvCamera()
@@ -77,12 +70,18 @@ class GLViewport(QOpenGLWidget):
         self._last_y = 0.0
 
     def set_callback(self, fn: Callable[[mujoco.MjModel, mujoco.MjData, mujoco.MjvScene], None] | None) -> None:
+        """Register a per-frame overlay callback or `None` to clear it.
+        
+        TODO: Figure out how to do this for inter-process communication.
+        """
         self._callback = fn
 
     def initializeGL(self) -> None:
+        """Create the MuJoCo rendering context."""
         self._ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_150)
 
     def paintGL(self) -> None:
+        """Render a frame and emit drag forces if any."""
         # MuJoCo expects xfrc_applied to be cleared each frame
         self._data.xfrc_applied[:] = 0
         mujoco.mjv_applyPerturbPose(self.model, self._data, self.pert, 0)
@@ -112,6 +111,7 @@ class GLViewport(QOpenGLWidget):
         mujoco.mjr_render(rect, self.scene, self._ctx)
 
     def mousePressEvent(self, ev):
+        """Start drag or body-perturb interaction (Ctrl-click)."""
         self._mouse_btn = ev.button()
         self._last_x, self._last_y = ev.position().x(), ev.position().y()
 
@@ -154,6 +154,8 @@ class GLViewport(QOpenGLWidget):
         self.update()
 
     def mouseReleaseEvent(self, _ev):
+        """End drag / perturb and send a zero-force flush."""
+
         released = self._mouse_btn
         self.pert.active = 0
         self._mouse_btn  = None
@@ -166,6 +168,8 @@ class GLViewport(QOpenGLWidget):
             self._on_forces(zero_xrfc)
 
     def mouseMoveEvent(self, ev):
+        """Handle camera orbit, pan, and active perturb motion."""
+
         x, y = ev.position().x(), ev.position().y()
         dx, dy = x - self._last_x, y - self._last_y
         self._last_x, self._last_y = x, y
@@ -207,11 +211,11 @@ class GLViewport(QOpenGLWidget):
         self.update()
 
     def wheelEvent(self, ev):
-        # One standard notch on most mice: angleDelta().y() = ±120
+        """Zoom the free camera in/out."""
+
         step = np.sign(ev.angleDelta().y())
         zoom_factor = 0.99 if step > 0 else 1.01
 
-        # Apply & clamp
         self.cam.distance *= zoom_factor
         self.cam.distance = np.clip(self.cam.distance, 0.1, 100.0)
         self.update()

@@ -1,8 +1,8 @@
-"""
-Shared-memory ring (single producer / single consumer).
+"""Shared-memory ring buffer for single-producer/single-consumer IPC.
 
-Import cost kept in ipc/ so pure-Python paths don't pull in
-`multiprocessing.shared_memory`.
+The implementation stores items in an anonymous `multiprocessing.SharedMemory`
+block so a physics loop and GUI process can exchange high-rate NumPy arrays
+without pickling or extra copies.
 """
 
 from __future__ import annotations
@@ -21,26 +21,11 @@ _DTYPE            = np.float64
 
 
 class SharedMemoryRing:
-    """
-    A **single-producer / single-consumer** ring in anonymous shared memory.
+    """Fixed-capacity ring in a `SharedMemory` block.
 
-    Parameters
-    ----------
-    shape : tuple[int, ...]
-        Shape of one element (e.g. `(nq,)` or `(240, 320, 3)`).
-    capacity : int, optional
-        Number of elements in the ring (power-of-two recommended).
-    name : str | None
-        Name of an existing `SharedMemory` block (for attach).
-    create : bool
-        `True`  → allocate new block.  
-        `False` → attach to existing block (`name` must be given).
-
-    Notes
-    -----
-    • Overwrites the oldest frame on overflow (perfectly fine for a viewer).  
-    • Uses a tiny `Lock` to protect the producer's index update; reader is
-      wait-free except for a single atomic read.
+    A single writer pushes data with `push()`, a single reader fetches the
+    newest value via `latest()`.  Overflow silently overwrites the oldest
+    element – ideal for high-rate streaming where "latest frame wins".
     """
 
     HEADER_BYTES = ctypes.sizeof(ctypes.c_uint32)   # 4
@@ -53,6 +38,14 @@ class SharedMemoryRing:
         name: str | None = None,
         create: bool = True,
     ) -> None:
+        """Allocate or attach to a shared ring with the given *shape*.
+        
+        Number of elements in the ring must be a power of two so the
+        writer can wrap the index with `(idx + 1) & (capacity - 1)` instead
+        of the slower `% capacity` modulo.
+
+        The caller is responsible for unlinking the block (`unlink()`) when done if `create=True`.
+        """
         if capacity < 1 or (capacity & (capacity - 1)) != 0:
             raise ValueError(
                 "capacity must be a power of two and ≥1 "
@@ -87,7 +80,10 @@ class SharedMemoryRing:
         self._current_size = 0
 
     def push(self, arr: np.ndarray) -> None:
-        """Copy *arr* into the next slot; arr must match `shape`."""
+        """Append *arr* (must match `shape`).
+        
+        Oldest entry is dropped on wrap.
+        """
         if arr.shape != self.shape:
             raise ValueError(f"expected shape {self.shape}, got {arr.shape}")
 
@@ -100,7 +96,7 @@ class SharedMemoryRing:
                 self._current_size += 1
 
     def latest(self) -> np.ndarray:
-        """Return a **copy** of the newest element."""
+        """Return a **copy** of the most recent element; thread-safe and wait-free."""
         i   = self._idx.value & self._mask
         out = self._buf[i].copy().reshape(self.shape)
         self._pop_ctr += 1
@@ -113,25 +109,24 @@ class SharedMemoryRing:
 
     @property
     def push_count(self) -> int:
-        """Total number of elements pushed since creation."""
+        """Total pushes since construction (monotonic)."""
         return self._push_ctr
 
     @property
     def pop_count(self) -> int:
-        """Total number of elements popped since creation."""
+        """Total successful `latest()` calls (monotonic)."""
         return self._pop_ctr
 
     @property
     def name(self) -> str:
-        """SharedMemory block name – needed by the attacher."""
+        """SharedMemory block name used by a second process to attach."""
         return self._shm.name
 
     def close(self) -> None:
+        """Detach local NumPy views and close the shared-memory mapping.
+        
+        This cleanup is important to avoid memory leaks.
         """
-        Idempotent.  Detaches local Python views then closes the
-        underlying `SharedMemory` mapping.
-        """
-
 
         try:
             del self._buf
@@ -150,5 +145,5 @@ class SharedMemoryRing:
             )
 
     def unlink(self) -> None:
-        """Destroy the backing shared-memory block (creator only)."""
+        """Permanently destroy the backing shared-memory block (creator only)."""
         self._shm.unlink()

@@ -1,8 +1,4 @@
-# kmv/core/types.py
-"""
-Tiny, zero-dependency dataclasses used across the viewer stack.
-No Qt, no multiprocessing imports allowed here.
-"""
+""" Defines types and dataclasses for the viewer."""
 
 from __future__ import annotations
 
@@ -14,16 +10,7 @@ import numpy as np
 
 @dataclass(frozen=True, slots=True)
 class Frame:
-    """
-    One MuJoCo state sample.
-
-    Attributes
-    ----------
-    qpos : (nq,) float64 array
-    qvel : (nv,) float64 array
-    xfrc_applied : (nbody, 6) float64 array or None
-        Optional external Cartesian forces (used for mouse-drag).
-    """
+    """Single MuJoCo state sample."""
     qpos: np.ndarray
     qvel: np.ndarray
     xfrc_applied: np.ndarray | None = None
@@ -34,22 +21,22 @@ Scalars = Mapping[str, float]
 
 @dataclass
 class Msg:
-    """Base message type."""
+    """Base message class for control-pipe messages"""
     pass
 
 @dataclass
 class ForcePacket(Msg):
-    """Force data from GUI interactions."""
+    """Array for mouse interaction for xrfc pushes in the GUI."""
     forces: np.ndarray
 
 @dataclass
 class TelemetryPacket(Msg):
-    """Telemetry data for the stats table."""
+    """Key-value rows for the stats table."""
     rows: Mapping[str, float]
 
 @dataclass
 class PlotPacket(Msg):
-    """Plot data for scalar visualizations."""
+    """Batch of scalar curves to append to a plot group."""
     group: str
     scalars: Mapping[str, float]
 
@@ -59,6 +46,8 @@ RenderMode = Literal["window", "offscreen"]
 
 @dataclass(frozen=True, slots=True)
 class ViewerConfig:
+    """Static GUI options sent to the worker at launch time."""
+
     width: int  = 900
     height: int = 550
     enable_plots: bool = True

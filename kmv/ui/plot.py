@@ -1,13 +1,4 @@
-# kmv/ui/plot.py
-"""
-`ScalarPlot` – light-weight real-time line plot for up to a few dozen
-scalar streams.  Designed for k-Hz updates without blocking the GUI thread.
-
-Dependencies
-------------
-* PySide6
-* pyqtgraph
-"""
+"""Real-time multi-curve plot widget."""
 
 from __future__ import annotations
 
@@ -19,14 +10,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout
 
 
 class ScalarPlot(QWidget):
-    """
-    Parameters
-    ----------
-    history : int
-        Max samples kept per curve.
-    max_curves : int
-        Max number of distinct scalar keys shown simultaneously.
-    """
+    """Light-weight scrolling plot for a handful of scalar streams."""
 
     def __init__(
         self,
@@ -63,15 +47,12 @@ class ScalarPlot(QWidget):
         return color
 
     def update_data(self, t: float, scalars: Dict[str, float]) -> None:
-        """
-        Append one sample per scalar and update the curves.
+        """Append one `(t, value)` sample per scalar and redraw curves."""
 
-        Called by `ViewerWindow.step_and_draw()` at ~20 Hz.
-        """
         for name, value in scalars.items():
             if name not in self._buffers:
                 if len(self._curves) >= self._max_curves:
-                    continue  # silently drop extra streams
+                    continue  # silently ignore extra streams
                 self._buffers[name] = deque(maxlen=self._history)
                 color = self._next_color()
                 self._curves[name] = self._plot.plot(
@@ -80,6 +61,7 @@ class ScalarPlot(QWidget):
 
             self._buffers[name].append((t, value))
 
+        # Update the curves
         for name, buf in self._buffers.items():
             ts, vs = zip(*buf)
             self._curves[name].setData(ts, vs)

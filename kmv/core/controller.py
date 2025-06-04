@@ -1,3 +1,10 @@
+"""
+Render-side runtime utilities for the KMV GUI worker.
+
+The module runs entirely inside the **viewer process**: it reads physics
+streams from shared-memory rings, drains metric queues, and keeps a rolling
+set of timing / telemetry values that the Qt widgets display.
+"""
 from __future__ import annotations
 import time
 from typing import Mapping, Callable
@@ -14,7 +21,13 @@ _OnForces = Callable[[_Array], None]
 
 
 class RenderLoop:
-    """Pure-Python, no-Qt controller that owns the render-time state machine."""
+    """Per-frame state manager for the GUI process.
+
+    Each `tick()` pulls the newest *qpos/qvel* from shared memory, updates
+    `mujoco.MjData`, ingests table/plot packets, and recomputes FPS and other
+    diagnostics—all without touching Qt.  The viewport and widgets then read
+    the freshly updated attributes to paint the current frame.
+    """
 
     def __init__(
         self,
@@ -56,15 +69,14 @@ class RenderLoop:
         self._plots_latest: dict[str, _Scalars] = {}
 
     def tick(self) -> None:
-        """Advance state **and** update `mjData` in-place."""
-
+        """Advance state and update `mjData` in-place."""
         self._pull_state()
-
         self._drain_metrics()
-
         self._account_timing()
 
     def _pull_state(self) -> None:
+        """Pull the physics state from the parent process."""
+
         qpos = self._rings["qpos"].latest()
         qvel = self._rings["qvel"].latest()
         sim_time = float(self._rings["sim_time"].latest()[0])
@@ -81,9 +93,12 @@ class RenderLoop:
         mujoco.mj_forward(self._model, self._data)
 
     def _drain_metrics(self) -> None:
+        """Drain metrics from the parent process for the telemetry table."""
+
         while (pkt := self._get_table()) is not None:
             self._last_table.update(pkt.rows)
 
+            # Compute physics iterations per second
             if "Phys Iters" in pkt.rows:
                 now = time.perf_counter()
                 dt  = now - self._phys_iters_prev_time
@@ -94,24 +109,30 @@ class RenderLoop:
                 self._phys_iters_prev      = pkt.rows["Phys Iters"]
                 self._phys_iters_prev_time = now
 
+        # Drain plots
         while (pkt := self._get_plot()) is not None:
             self._plots_latest[pkt.group] = pkt.scalars
             self._plot_ctr += 1
 
     def _account_timing(self) -> None:
+        """Account for timing metrics."""
+        
         self._frame_ctr += 1
         now = time.perf_counter()
+
+        # Viewer FPS
         if (now - self._fps_timer) >= 1.0:
             self.fps = self._frame_ctr / (now - self._fps_timer)
             self._frame_ctr = 0
             self._fps_timer = now
 
+        # Plot FPS
         if (now - self._plot_timer) >= 1.0:
             self.plot_hz   = self._plot_ctr / (now - self._plot_timer)
             self._plot_ctr = 0
             self._plot_timer = now
 
-        # wall-clock bookkeeping
+        # Wall-Time
         if self._wall_start is None:
             self._wall_start = now
         wall_elapsed = now - self._wall_start
@@ -120,7 +141,6 @@ class RenderLoop:
             if wall_elapsed > 0 else 0.0
         )
 
-        # keep a ready-to-use row dict
         self._last_table.update(
             {
                 "Viewer FPS":          round(self.fps,       1),

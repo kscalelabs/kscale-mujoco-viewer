@@ -1,14 +1,7 @@
-# kmv/worker/window.py
-"""
-`ViewerWindow` – Qt front-end that lives **inside** the GUI process.
+"""Qt front-end window.
 
-It receives:
-* a compiled `mjModel` and private `mjData`
-* a dict of SharedMemoryRings (state streams)
-* the telemetry queue
-* a few cosmetic options
-
-The parent process never imports this module.
+Hosts an OpenGL viewport, optional scalar plots, and a live telemetry table,
+fed by shared-memory rings and metric queues from the parent process.
 """
 
 from __future__ import annotations
@@ -44,9 +37,8 @@ import queue
 
 
 class ViewerWindow(QMainWindow):
-    """
-    Composes:  | GLViewport |  ScalarPlot  |  TelemetryTable |
-    """
+    """Main KMV GUI window composed of viewport, plots and stats."""
+
 
     def __init__(
         self,
@@ -62,39 +54,30 @@ class ViewerWindow(QMainWindow):
     ) -> None:
         super().__init__(parent)
         cfg = view_conf
+        self.resize(cfg.width, cfg.height)
+        self.setWindowTitle("K-Scale MuJoCo Viewer")
 
-        width, height   = cfg.width, cfg.height
-        enable_plots    = cfg.enable_plots
+        self._model, self._data = model, data
+        self._rings = rings
+        self._table_q, self._plot_q = table_q, plot_q
+        self._ctrl_send = ctrl_send
+        self._enable_plots = cfg.enable_plots
 
-        shadow          = cfg.shadow
-        reflection      = cfg.reflection
-        contact_force   = cfg.contact_force
-        contact_point   = cfg.contact_point
-        inertia         = cfg.inertia
-
-        self.resize(width, height)
-        self.setWindowTitle("KMV Viewer")
-
-        self._model      = model
-        self._data       = data
-        self._rings      = rings
-        self._table_q    = table_q
-        self._plot_q     = plot_q
-        self._ctrl_send  = ctrl_send
-
+        # MuJoCo scene
         self._viewport = GLViewport(
             model,
             data,
-            shadow        = shadow,
-            reflection    = reflection,
-            contact_force = contact_force,
-            contact_point = contact_point,
-            inertia       = inertia,
-            on_forces     = lambda arr: ctrl_send.send(("forces", arr)),
-            parent        = self,
+            shadow=cfg.shadow,
+            reflection=cfg.reflection,
+            contact_force=cfg.contact_force,
+            contact_point=cfg.contact_point,
+            inertia=cfg.inertia,
+            on_forces=lambda arr: ctrl_send.send(("forces", arr)),
+            parent=self,
         )
         self.setCentralWidget(self._viewport)
 
+        # Status bar
         bar = QStatusBar(self)
         bar.setContentsMargins(16, 0, 0, 0)
         bar.setSizeGripEnabled(False)
@@ -112,46 +95,49 @@ class ViewerWindow(QMainWindow):
         self._lbl_wallt  = _add_status("Wall Time: –")
         self._lbl_reset  = _add_status("Resets: 0")
 
-        self._plots: dict[str, ScalarPlot] = {}
-        self._plot_docks:  dict[str, QDockWidget] = {}
-        self._plot_actions: dict[str, QAction] = {}
-        self._enable_plots = enable_plots
-
-
+        # Menus
         menubar = self.menuBar()
         menubar.setNativeMenuBar(False)
         self._plots_menu = menubar.addMenu("&Plots")
-
         self._telemetry_menu = menubar.addMenu("&Viewer Stats")
 
-        self._telemetry_table = ViewerStatsTable(self)
+        # Viewer stats table
+        self._viewer_stats_table = ViewerStatsTable(self)
         table_dock = QDockWidget("Viewer Stats", self)
-        table_dock.setWidget(self._telemetry_table)
+        table_dock.setWidget(self._viewer_stats_table)
         self.addDockWidget(Qt.RightDockWidgetArea, table_dock)
         table_dock.hide()
 
-        # Menu and dock synchronisation
         telem_action = QAction("Show viewer stats", self, checkable=True)
-        telem_action.setChecked(False)
         telem_action.toggled.connect(table_dock.setVisible)
         table_dock.visibilityChanged.connect(telem_action.setChecked)
         self._telemetry_menu.addAction(telem_action)
 
-        self.show()
+        # Plots
+        self._plots: dict[str, ScalarPlot] = {}
+        self._plot_docks: dict[str, QDockWidget] = {}
+        self._plot_actions: dict[str, QAction] = {}
 
-        # Apply camera parameters
+        # Camera
         cam = self._viewport.cam
-        if cfg.camera_distance  is not None: cam.distance  = cfg.camera_distance
-        if cfg.camera_azimuth   is not None: cam.azimuth   = cfg.camera_azimuth
-        if cfg.camera_elevation is not None: cam.elevation = cfg.camera_elevation
-        if cfg.camera_lookat    is not None: cam.lookat[:] = np.asarray(cfg.camera_lookat, dtype=np.float64)
-        if cfg.track_body_id    is not None:
+        if cfg.camera_distance is not None:
+            cam.distance = cfg.camera_distance
+        if cfg.camera_azimuth is not None:
+            cam.azimuth = cfg.camera_azimuth
+        if cfg.camera_elevation is not None:
+            cam.elevation = cfg.camera_elevation
+        if cfg.camera_lookat is not None:
+            cam.lookat[:] = np.asarray(cfg.camera_lookat, dtype=np.float64)
+        if cfg.track_body_id is not None:
             cam.trackbodyid = cfg.track_body_id
-            cam.type        = mujoco.mjtCamera.mjCAMERA_TRACKING
+            cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
 
         self.__post_init_render_loop()
+        self.show()
 
     def __post_init_render_loop(self):
+        """Wire shared queues into a `RenderLoop` instance."""
+
         def _pop(q):
             try:
                 return q.get_nowait()
@@ -179,10 +165,7 @@ class ViewerWindow(QMainWindow):
         )
 
     def _plot_for_group(self, group: str) -> ScalarPlot:
-        """
-        Lazily create one dock + QAction per *group*.  The dock starts hidden;
-        ticking the corresponding check-box in the **Plots** menu shows it.
-        """
+        """Return (or lazily create) the plot dock for *group*."""
         if group in self._plots:
             return self._plots[group]
 
@@ -209,11 +192,11 @@ class ViewerWindow(QMainWindow):
         return plot
 
     def step_and_draw(self) -> None:
-        """One GUI frame (~60 Hz)"""
+        """Advance one GUI frame: pull state, update widgets, repaint."""
         self._rl.tick()
 
-        # Full table
-        self._telemetry_table.update(self._rl._last_table)
+        # Table
+        self._viewer_stats_table.update(self._rl._last_table)
 
         # Status-bar mirrors
         self._lbl_fps.setText(  f"FPS: {self._rl.fps:5.1f}")
@@ -222,11 +205,11 @@ class ViewerWindow(QMainWindow):
         self._lbl_wallt.setText(f"Wall t: {self._rl._last_table.get('Wall Time', 0):6.2f}")
         self._lbl_reset.setText(f"Resets: {self._rl.reset_count}")
 
-        # Forward all groups
+        # Plots
         if self._enable_plots:
             for group, scalars in self._rl._plots_latest.items():
                 plot = self._plot_for_group(group)
                 plot.update_data(self._rl.sim_time_abs, scalars)
 
-        # Trigger paint
+        # Repaint OpenGL
         self._viewport.update()
