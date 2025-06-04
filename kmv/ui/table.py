@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
-from PySide6.QtWidgets import QTableView, QWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QTableView,
+    QWidget,
+)
 
 
 class _TableModel(QAbstractTableModel):
@@ -20,14 +24,18 @@ class _TableModel(QAbstractTableModel):
         self._rows: list[tuple[str, Any]] = []
         self._known_keys: set[str] = set()
 
-    def rowCount(self, *_: object) -> int:  # noqa: N802 – Qt API requires camelCase
+    def rowCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802
         return len(self._rows)
 
-    def columnCount(self, *_: object) -> int:  # noqa: N802
+    def columnCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802
         return 2
 
-    def data(self, index: QModelIndex, role: Qt.ItemDataRole) -> object | None:
-        if role != Qt.DisplayRole:
+    def data(
+        self,
+        index: QModelIndex,
+        role: int = Qt.ItemDataRole.DisplayRole,
+    ) -> object | None:  # type: ignore[override]  # keep QWidget signature happy
+        if role != Qt.ItemDataRole.DisplayRole:
             return None
         key, val = self._rows[index.row()]
         return key if index.column() == 0 else val
@@ -46,7 +54,7 @@ class _TableModel(QAbstractTableModel):
 
 
 class ViewerStatsTable(QTableView):
-    """Helper that Wraps `_TableModel` and adds `.update()`."""
+    """Helper that Wraps `_TableModel` and adds `.refresh()`."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -55,9 +63,9 @@ class ViewerStatsTable(QTableView):
 
         self.horizontalHeader().setStretchLastSection(True)
         self.verticalHeader().hide()
-        self.setSelectionMode(QTableView.NoSelection)
-        self.setEditTriggers(QTableView.NoEditTriggers)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
-    def update(self, metrics: Mapping[str, Any]) -> None:
+    def refresh(self, metrics: Mapping[str, Any]) -> None:
         """Replace all rows with updated metrics."""
         self._model.replace(metrics)

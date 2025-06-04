@@ -102,7 +102,7 @@ class ViewerWindow(QMainWindow):
         self._viewer_stats_table = ViewerStatsTable(self)
         table_dock = QDockWidget("Viewer Stats", self)
         table_dock.setWidget(self._viewer_stats_table)
-        self.addDockWidget(Qt.RightDockWidgetArea, table_dock)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, table_dock)
         table_dock.hide()
 
         telem_action = QAction("Show viewer stats", self, checkable=True)
@@ -142,12 +142,14 @@ class ViewerWindow(QMainWindow):
                 return None
 
         def get_table_packet() -> TelemetryPacket | None:
-            if (msg := _pop(self._table_q)) is not None:
+            msg = _pop(self._table_q)
+            if isinstance(msg, dict):
                 return TelemetryPacket(rows=msg)
             return None
 
         def get_plot_packet() -> PlotPacket | None:
-            if (msg := _pop(self._plot_q)) is not None:
+            msg = _pop(self._plot_q)
+            if isinstance(msg, dict) and "scalars" in msg:
                 return PlotPacket(group=msg.get("group", "default"), scalars=msg["scalars"])
             return None
 
@@ -169,7 +171,7 @@ class ViewerWindow(QMainWindow):
         plot = ScalarPlot(history=600, max_curves=32)
         dock = QDockWidget(group.capitalize(), self)
         dock.setWidget(plot)
-        self.addDockWidget(Qt.BottomDockWidgetArea, dock)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
         dock.hide()
 
         # Menu action
@@ -192,7 +194,7 @@ class ViewerWindow(QMainWindow):
         self._rl.tick()
 
         # Table
-        self._viewer_stats_table.update(self._rl._last_table)
+        self._viewer_stats_table.refresh(self._rl._last_table)
 
         # Status-bar mirrors
         self._lbl_fps.setText(f"FPS: {self._rl.fps:5.1f}")

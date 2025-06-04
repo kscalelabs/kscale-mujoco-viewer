@@ -54,7 +54,7 @@ class RenderLoop:
         self._plot_ctr = 0
         self.plot_hz = 0.0
 
-        self._phys_iters_prev = 0
+        self._phys_iters_prev: float = 0.0
         self._phys_iters_prev_time = time.perf_counter()
         self.phys_iters_per_sec = 0.0
 
@@ -94,7 +94,8 @@ class RenderLoop:
 
     def _drain_metrics(self) -> None:
         """Drain metrics from the parent process for the telemetry table."""
-        while (pkt := self._get_table()) is not None:
+        while (pkt_table := self._get_table()) is not None:
+            pkt = pkt_table  # keeps the original variable name but distinct type per loop
             self._last_table.update(pkt.rows)
 
             # Compute physics iterations per second
@@ -107,8 +108,8 @@ class RenderLoop:
                 self._phys_iters_prev_time = now
 
         # Drain plots
-        while (pkt := self._get_plot()) is not None:
-            self._plots_latest[pkt.group] = pkt.scalars
+        while (pkt_plot := self._get_plot()) is not None:
+            self._plots_latest[pkt_plot.group] = pkt_plot.scalars
             self._plot_ctr += 1
 
     def _account_timing(self) -> None:

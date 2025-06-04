@@ -34,9 +34,7 @@ namespace_packages = false
 [[tool.mypy.overrides]]
 module = [
     "mujoco.*",
-    "dearpygui.*",
-    "Foundation.*",
-    "PyObjCTools.*",
+    "pyqtgraph.*",
 ]
 ignore_missing_imports = true
 

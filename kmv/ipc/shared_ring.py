@@ -62,7 +62,7 @@ class SharedMemoryRing:
         self._idx = ctypes.c_uint32.from_buffer(self._shm.buf, 0)
 
         buf_start = self.HEADER_BYTES
-        self._buf = np.ndarray(
+        self._buf: np.ndarray = np.ndarray(
             (capacity, self.elem_size),
             dtype=_DTYPE,
             buffer=self._shm.buf,

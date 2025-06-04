@@ -63,7 +63,9 @@ class GLViewport(QOpenGLWidget):
         self._on_forces = on_forces
 
         # mouse state
-        self._mouse_btn: int | None = None
+        from PySide6.QtCore import Qt as _QtAlias  # local alias to avoid long lines
+
+        self._mouse_btn: _QtAlias.MouseButton | None = None
         self._last_x = 0.0
         self._last_y = 0.0
 
@@ -111,7 +113,7 @@ class GLViewport(QOpenGLWidget):
         self._mouse_btn = ev.button()
         self._last_x, self._last_y = ev.position().x(), ev.position().y()
 
-        if not (ev.modifiers() & Qt.ControlModifier):
+        if not (ev.modifiers() & Qt.KeyboardModifier.ControlModifier):
             return
 
         # Ctrl-click: select MuJoCo body under cursor
@@ -149,7 +151,9 @@ class GLViewport(QOpenGLWidget):
         diff = selpnt - self._data.xpos[bodyid]
         self.pert.localpos = self._data.xmat[bodyid].reshape(3, 3) @ diff
         self.pert.active = (
-            mujoco.mjtPertBit.mjPERT_ROTATE if self._mouse_btn == Qt.LeftButton else mujoco.mjtPertBit.mjPERT_TRANSLATE
+            mujoco.mjtPertBit.mjPERT_ROTATE
+            if self._mouse_btn == Qt.MouseButton.LeftButton
+            else mujoco.mjtPertBit.mjPERT_TRANSLATE
         )
         mujoco.mjv_initPerturb(self.model, self._data, self.scene, self.pert)
         self.update()
@@ -180,7 +184,7 @@ class GLViewport(QOpenGLWidget):
                 # Shift + Ctrl pressed: move horizontally
                 action = (
                     mujoco.mjtMouse.mjMOUSE_MOVE_H
-                    if (ev.modifiers() & Qt.ShiftModifier)
+                    if (ev.modifiers() & Qt.KeyboardModifier.ShiftModifier)
                     else mujoco.mjtMouse.mjMOUSE_MOVE_V
                 )
             else:
@@ -199,11 +203,11 @@ class GLViewport(QOpenGLWidget):
             return
 
         # Camera controls
-        if self._mouse_btn == Qt.LeftButton:
+        if self._mouse_btn == Qt.MouseButton.LeftButton:
             self.cam.azimuth += 0.25 * dx
             self.cam.elevation += 0.25 * dy
             self.cam.elevation = np.clip(self.cam.elevation, -89.9, 89.9)
-        elif self._mouse_btn == Qt.RightButton:
+        elif self._mouse_btn == Qt.MouseButton.RightButton:
             scale = 0.002 * self.cam.distance
             right = np.array([1.0, 0.0, 0.0])
             fwd = np.array([0.0, 1.0, 0.0])
