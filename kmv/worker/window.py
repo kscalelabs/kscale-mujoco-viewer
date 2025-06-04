@@ -6,39 +6,34 @@ fed by shared-memory rings and metric queues from the parent process.
 
 from __future__ import annotations
 
-import time
+import queue
+from multiprocessing.connection import Connection
 from typing import Mapping
-from kmv.core.types import ViewerConfig
 
 import mujoco
 import numpy as np
+from PySide6.QtCore import Qt
 
-from PySide6.QtCore    import Qt
-from PySide6.QtWidgets import (
-    QMainWindow,
-    QDockWidget,
-    QStatusBar,
-    QWidget,
-    QVBoxLayout,
-    QTableView,
-    QLabel,
-)
 # QAction actually sits in QtGui
 from PySide6.QtGui import QAction
+from PySide6.QtWidgets import (
+    QDockWidget,
+    QLabel,
+    QMainWindow,
+    QStatusBar,
+    QWidget,
+)
 
-from kmv.ipc.shared_ring       import SharedMemoryRing
-from multiprocessing.connection import Connection
-from kmv.ui.viewport     import GLViewport
-from kmv.ui.plot         import ScalarPlot
-from kmv.ui.table        import ViewerStatsTable
 from kmv.core.controller import RenderLoop
-from kmv.core.types      import TelemetryPacket, PlotPacket
-import queue
+from kmv.core.types import PlotPacket, TelemetryPacket, ViewerConfig
+from kmv.ipc.shared_ring import SharedMemoryRing
+from kmv.ui.plot import ScalarPlot
+from kmv.ui.table import ViewerStatsTable
+from kmv.ui.viewport import GLViewport
 
 
 class ViewerWindow(QMainWindow):
     """Main KMV GUI window composed of viewport, plots and stats."""
-
 
     def __init__(
         self,
@@ -48,7 +43,7 @@ class ViewerWindow(QMainWindow):
         *,
         table_q,
         plot_q,
-        ctrl_send: Connection,         # NEW
+        ctrl_send: Connection,  # NEW
         view_conf: ViewerConfig,
         parent: QWidget | None = None,
     ) -> None:
@@ -89,11 +84,11 @@ class ViewerWindow(QMainWindow):
             bar.addWidget(w)
             return w
 
-        self._lbl_fps    = _add_status("FPS: –")
-        self._lbl_phys   = _add_status("Phys Iters/s: –")
-        self._lbl_simt   = _add_status("Sim Time: –")
-        self._lbl_wallt  = _add_status("Wall Time: –")
-        self._lbl_reset  = _add_status("Resets: 0")
+        self._lbl_fps = _add_status("FPS: –")
+        self._lbl_phys = _add_status("Phys Iters/s: –")
+        self._lbl_simt = _add_status("Sim Time: –")
+        self._lbl_wallt = _add_status("Wall Time: –")
+        self._lbl_reset = _add_status("Resets: 0")
 
         # Menus
         menubar = self.menuBar()
@@ -151,10 +146,9 @@ class ViewerWindow(QMainWindow):
 
         def get_plot_packet():
             if (msg := _pop(self._plot_q)) is not None:
-                return PlotPacket(group=msg.get("group", "default"),
-                                   scalars=msg["scalars"])
+                return PlotPacket(group=msg.get("group", "default"), scalars=msg["scalars"])
             return None
-        
+
         self._rl = RenderLoop(
             model=self._model,
             data=self._data,
@@ -186,8 +180,8 @@ class ViewerWindow(QMainWindow):
         self._plots_menu.addAction(action)
 
         # Bookkeeping
-        self._plots[group]        = plot
-        self._plot_docks[group]   = dock
+        self._plots[group] = plot
+        self._plot_docks[group] = dock
         self._plot_actions[group] = action
         return plot
 
@@ -199,9 +193,9 @@ class ViewerWindow(QMainWindow):
         self._viewer_stats_table.update(self._rl._last_table)
 
         # Status-bar mirrors
-        self._lbl_fps.setText(  f"FPS: {self._rl.fps:5.1f}")
-        self._lbl_phys.setText( f"Phys/s: {self._rl.phys_iters_per_sec:5.1f}")
-        self._lbl_simt.setText( f"Sim t: {self._rl.sim_time_abs:6.2f}")
+        self._lbl_fps.setText(f"FPS: {self._rl.fps:5.1f}")
+        self._lbl_phys.setText(f"Phys/s: {self._rl.phys_iters_per_sec:5.1f}")
+        self._lbl_simt.setText(f"Sim t: {self._rl.sim_time_abs:6.2f}")
         self._lbl_wallt.setText(f"Wall t: {self._rl._last_table.get('Wall Time', 0):6.2f}")
         self._lbl_reset.setText(f"Resets: {self._rl.reset_count}")
 

@@ -6,13 +6,12 @@ to `kmv.app.viewer.Viewer`.  The GUI should stay ~60 FPS even if we sleep.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
-import logging
 
-import mujoco
-import numpy as np
 import colorlogging
+import mujoco
 
 from kmv.app.viewer import QtViewer
 
@@ -20,20 +19,20 @@ logger = logging.getLogger(__name__)
 
 PHYSICS_DT = 0.02
 
+
 def run_default_humanoid() -> None:
     """Run the default humanoid simulation."""
-
     xml_path = Path(__file__).parent.parent / "tests" / "assets" / "humanoid.xml"
     logger.info("Loading model: %s", xml_path)
     model = mujoco.MjModel.from_xml_path(str(xml_path))
     model.opt.timestep = PHYSICS_DT
-    data  = mujoco.MjData(model)
+    data = mujoco.MjData(model)
 
     viewer = QtViewer(model)
     logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C or close window to quit.")
 
-    sim_it_counter   = 0
-    t0_wall  = time.perf_counter()
+    sim_it_counter = 0
+    t0_wall = time.perf_counter()
 
     try:
         while True:
@@ -51,24 +50,25 @@ def run_default_humanoid() -> None:
                 data.xfrc_applied[:] = xfrc
 
             # Plot stuff
-            viewer.push_plot_metrics(group="Physics", scalars=
-                {
+            viewer.push_plot_metrics(
+                group="Physics",
+                scalars={
                     "qpos0": float(data.qpos[0]),
                     "qpos1": float(data.qpos[1]),
                     "qpos2": float(data.qpos[2]),
                     "qvel0": float(data.qvel[0]),
                     "qvel1": float(data.qvel[1]),
                     "qvel2": float(data.qvel[2]),
-                }
+                },
             )
 
             # Sleep so that sim-time == wall-time
             target_wall = t0_wall + (data.time + PHYSICS_DT)
-            now         = time.perf_counter()
-            sleep_time_seconds     = target_wall - now
+            now = time.perf_counter()
+            sleep_time_seconds = target_wall - now
             if sleep_time_seconds > 0.0:
                 time.sleep(sleep_time_seconds)
-                
+
             if not viewer.is_open:
                 logger.info("Viewer closed, exiting simulation loop.")
                 break

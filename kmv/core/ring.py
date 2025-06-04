@@ -1,5 +1,4 @@
-"""
-Lock-light ring buffer helpers.
+"""Lock-light ring buffer helpers.
 
 Defines:
 - `Ring` - structural protocol for a single-producer / single-consumer queue

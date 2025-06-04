@@ -8,16 +8,17 @@ without pickling or extra copies.
 from __future__ import annotations
 
 import ctypes
+import gc
+import warnings
 from multiprocessing import Lock, shared_memory
 from typing import Tuple
 
-import numpy as np        
-import gc, warnings
+import numpy as np
 
 __all__ = ["SharedMemoryRing"]
 
-_CAPACITY_DEFAULT = 64 # Needs to be a power of two so we can mask indices
-_DTYPE            = np.float64
+_CAPACITY_DEFAULT = 64  # Needs to be a power of two so we can mask indices
+_DTYPE = np.float64
 
 
 class SharedMemoryRing:
@@ -28,7 +29,7 @@ class SharedMemoryRing:
     element – ideal for high-rate streaming where "latest frame wins".
     """
 
-    HEADER_BYTES = ctypes.sizeof(ctypes.c_uint32)   # 4
+    HEADER_BYTES = ctypes.sizeof(ctypes.c_uint32)  # 4
 
     def __init__(
         self,
@@ -39,7 +40,7 @@ class SharedMemoryRing:
         create: bool = True,
     ) -> None:
         """Allocate or attach to a shared ring with the given *shape*.
-        
+
         Number of elements in the ring must be a power of two so the
         writer can wrap the index with `(idx + 1) & (capacity - 1)` instead
         of the slower `% capacity` modulo.
@@ -47,28 +48,23 @@ class SharedMemoryRing:
         The caller is responsible for unlinking the block (`unlink()`) when done if `create=True`.
         """
         if capacity < 1 or (capacity & (capacity - 1)) != 0:
-            raise ValueError(
-                "capacity must be a power of two and ≥1 "
-                f"(got {capacity})"
-            )
+            raise ValueError(f"capacity must be a power of two and ≥1 (got {capacity})")
         self._mask = capacity - 1
 
-        self.shape      = shape
-        self.capacity   = capacity
-        self.elem_size  = int(np.prod(shape))
-        self._bytes     = self.elem_size * _DTYPE().nbytes
-        shm_bytes       = self.HEADER_BYTES + capacity * self._bytes
+        self.shape = shape
+        self.capacity = capacity
+        self.elem_size = int(np.prod(shape))
+        self._bytes = self.elem_size * _DTYPE().nbytes
+        shm_bytes = self.HEADER_BYTES + capacity * self._bytes
 
-        self._shm = shared_memory.SharedMemory(
-            name=name, create=create, size=shm_bytes
-        )
+        self._shm = shared_memory.SharedMemory(name=name, create=create, size=shm_bytes)
 
         self._idx = ctypes.c_uint32.from_buffer(self._shm.buf, 0)
 
         buf_start = self.HEADER_BYTES
         self._buf = np.ndarray(
-            (capacity, self.elem_size), 
-            dtype=_DTYPE, 
+            (capacity, self.elem_size),
+            dtype=_DTYPE,
             buffer=self._shm.buf,
             offset=buf_start,
         )
@@ -81,7 +77,7 @@ class SharedMemoryRing:
 
     def push(self, arr: np.ndarray) -> None:
         """Append *arr* (must match `shape`).
-        
+
         Oldest entry is dropped on wrap.
         """
         if arr.shape != self.shape:
@@ -97,7 +93,7 @@ class SharedMemoryRing:
 
     def latest(self) -> np.ndarray:
         """Return a **copy** of the most recent element; thread-safe and wait-free."""
-        i   = self._idx.value & self._mask
+        i = self._idx.value & self._mask
         out = self._buf[i].copy().reshape(self.shape)
         self._pop_ctr += 1
         return out
@@ -124,10 +120,9 @@ class SharedMemoryRing:
 
     def close(self) -> None:
         """Detach local NumPy views and close the shared-memory mapping.
-        
+
         This cleanup is important to avoid memory leaks.
         """
-
         try:
             del self._buf
             del self._idx
@@ -140,8 +135,9 @@ class SharedMemoryRing:
             self._shm.close()
         except BufferError as err:
             warnings.warn(
-                f"SharedMemoryRing.close(): leaked view detected ({err}). "
-                "Shared memory left mapped.", RuntimeWarning, stacklevel=2
+                f"SharedMemoryRing.close(): leaked view detected ({err}). Shared memory left mapped.",
+                RuntimeWarning,
+                stacklevel=2,
             )
 
     def unlink(self) -> None:

@@ -1,19 +1,20 @@
-"""
-Render-side runtime utilities for the KMV GUI worker.
+"""Render-side runtime utilities for the KMV GUI worker.
 
 The module runs entirely inside the **viewer process**: it reads physics
 streams from shared-memory rings, drains metric queues, and keeps a rolling
 set of timing / telemetry values that the Qt widgets display.
 """
+
 from __future__ import annotations
+
 import time
-from typing import Mapping, Callable
+from typing import Callable, Mapping
 
-import numpy as np
 import mujoco
+import numpy as np
 
+from kmv.core.types import PlotPacket, TelemetryPacket
 from kmv.ipc.shared_ring import SharedMemoryRing
-from kmv.core.types import Msg, ForcePacket, TelemetryPacket, PlotPacket
 
 _Array = np.ndarray
 _Scalars = Mapping[str, float]
@@ -37,33 +38,33 @@ class RenderLoop:
         *,
         on_forces: _OnForces | None = None,
         get_table: Callable[[], TelemetryPacket | None],
-        get_plot:  Callable[[], PlotPacket | None],
+        get_plot: Callable[[], PlotPacket | None],
     ) -> None:
         self._model, self._data = model, data
         self._rings = rings
         self._on_forces = on_forces
         self._get_table = get_table
-        self._get_plot  = get_plot
+        self._get_plot = get_plot
 
-        self._fps_timer   = time.perf_counter()
-        self._frame_ctr   = 0
-        self.fps          = 0.0
+        self._fps_timer = time.perf_counter()
+        self._frame_ctr = 0
+        self.fps = 0.0
 
-        self._plot_timer  = time.perf_counter()
-        self._plot_ctr    = 0
-        self.plot_hz      = 0.0
+        self._plot_timer = time.perf_counter()
+        self._plot_ctr = 0
+        self.plot_hz = 0.0
 
-        self._phys_iters_prev      = 0
+        self._phys_iters_prev = 0
         self._phys_iters_prev_time = time.perf_counter()
-        self.phys_iters_per_sec    = 0.0
+        self.phys_iters_per_sec = 0.0
 
-        self._wall_start : float | None = None
+        self._wall_start: float | None = None
 
         self.sim_time_abs = 0.0
-        self.reset_count  = 0
-        self._sim_prev    = 0.0
-        self._sim_offset  = 0.0
-        self._reset_tol   = 1e-9
+        self.reset_count = 0
+        self._sim_prev = 0.0
+        self._sim_offset = 0.0
+        self._reset_tol = 1e-9
 
         self._last_table: dict[str, float] = {}
         self._plots_latest: dict[str, _Scalars] = {}
@@ -76,7 +77,6 @@ class RenderLoop:
 
     def _pull_state(self) -> None:
         """Pull the physics state from the parent process."""
-
         qpos = self._rings["qpos"].latest()
         qvel = self._rings["qvel"].latest()
         sim_time = float(self._rings["sim_time"].latest()[0])
@@ -84,29 +84,26 @@ class RenderLoop:
         if sim_time < self._sim_prev - self._reset_tol:
             self._sim_offset += self._sim_prev
             self.reset_count += 1
-        self._sim_prev    = sim_time
+        self._sim_prev = sim_time
         self.sim_time_abs = self._sim_offset + sim_time
 
-        self._data.qpos[:]  = qpos
-        self._data.qvel[:]  = qvel
-        self._data.time     = sim_time
+        self._data.qpos[:] = qpos
+        self._data.qvel[:] = qvel
+        self._data.time = sim_time
         mujoco.mj_forward(self._model, self._data)
 
     def _drain_metrics(self) -> None:
         """Drain metrics from the parent process for the telemetry table."""
-
         while (pkt := self._get_table()) is not None:
             self._last_table.update(pkt.rows)
 
             # Compute physics iterations per second
             if "Phys Iters" in pkt.rows:
                 now = time.perf_counter()
-                dt  = now - self._phys_iters_prev_time
+                dt = now - self._phys_iters_prev_time
                 if dt > 0:
-                    self.phys_iters_per_sec = (
-                        pkt.rows["Phys Iters"] - self._phys_iters_prev
-                    ) / dt
-                self._phys_iters_prev      = pkt.rows["Phys Iters"]
+                    self.phys_iters_per_sec = (pkt.rows["Phys Iters"] - self._phys_iters_prev) / dt
+                self._phys_iters_prev = pkt.rows["Phys Iters"]
                 self._phys_iters_prev_time = now
 
         # Drain plots
@@ -116,7 +113,6 @@ class RenderLoop:
 
     def _account_timing(self) -> None:
         """Account for timing metrics."""
-        
         self._frame_ctr += 1
         now = time.perf_counter()
 
@@ -128,7 +124,7 @@ class RenderLoop:
 
         # Plot FPS
         if (now - self._plot_timer) >= 1.0:
-            self.plot_hz   = self._plot_ctr / (now - self._plot_timer)
+            self.plot_hz = self._plot_ctr / (now - self._plot_timer)
             self._plot_ctr = 0
             self._plot_timer = now
 
@@ -136,19 +132,16 @@ class RenderLoop:
         if self._wall_start is None:
             self._wall_start = now
         wall_elapsed = now - self._wall_start
-        realtime_x   = (
-            self.sim_time_abs / max(wall_elapsed, 1e-9)
-            if wall_elapsed > 0 else 0.0
-        )
+        realtime_x = self.sim_time_abs / max(wall_elapsed, 1e-9) if wall_elapsed > 0 else 0.0
 
         self._last_table.update(
             {
-                "Viewer FPS":          round(self.fps,       1),
-                "Plot FPS":            round(self.plot_hz,   1),
-                "Phys Iters/s":        round(self.phys_iters_per_sec, 1),
-                "Abs Sim Time":        round(self.sim_time_abs, 3),
-                "Sim Time / Real Time":round(realtime_x, 2),
-                "Wall Time":           round(wall_elapsed, 2),
-                "Reset Count":         self.reset_count,
+                "Viewer FPS": round(self.fps, 1),
+                "Plot FPS": round(self.plot_hz, 1),
+                "Phys Iters/s": round(self.phys_iters_per_sec, 1),
+                "Abs Sim Time": round(self.sim_time_abs, 3),
+                "Sim Time / Real Time": round(realtime_x, 2),
+                "Wall Time": round(wall_elapsed, 2),
+                "Reset Count": self.reset_count,
             }
         )

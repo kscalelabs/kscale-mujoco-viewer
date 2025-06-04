@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from PySide6.QtCore    import Qt, QAbstractTableModel, QModelIndex
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtWidgets import QTableView
 
 
 class _TableModel(QAbstractTableModel):
     """Table class for stats and telemetry.
-    
+
     The table is updated with the new metrics, and any keys that are missing
     in the new metrics are filled with `None` so the row order remains stable.
     """
@@ -34,7 +34,6 @@ class _TableModel(QAbstractTableModel):
 
     def replace(self, metrics: Mapping[str, Any]) -> None:
         """Refresh the table with the new metrics."""
-
         self._known_keys.update(metrics.keys())
 
         rows: list[tuple[str, Any]] = []

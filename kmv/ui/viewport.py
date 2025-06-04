@@ -4,18 +4,15 @@ Lives entirely in the GUI thread: renders the current `MjData`, handles mouse
 interaction, and streams drag forces back to the parent process.
 """
 
-
 from __future__ import annotations
 
 from typing import Callable, Optional
 
 import mujoco
 import numpy as np
-
 from PySide6.QtCore import Qt
-from PySide6.QtGui  import QSurfaceFormat
+from PySide6.QtGui import QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-
 
 _fmt = QSurfaceFormat()
 _fmt.setDepthBufferSize(24)
@@ -46,17 +43,17 @@ class GLViewport(QOpenGLWidget):
         # MuJoCo scene
         self.model, self._data = model, data
         self.scene = mujoco.MjvScene(model, maxgeom=20_000)
-        self.cam   = mujoco.MjvCamera()
-        self.opt   = mujoco.MjvOption()
-        self.pert  = mujoco.MjvPerturb()
+        self.cam = mujoco.MjvCamera()
+        self.opt = mujoco.MjvOption()
+        self.pert = mujoco.MjvPerturb()
         mujoco.mjv_defaultFreeCamera(model, self.cam)
 
         # visual flags
-        self.scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW]     = shadow
+        self.scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = shadow
         self.scene.flags[mujoco.mjtRndFlag.mjRND_REFLECTION] = reflection
         self.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = contact_force
         self.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = contact_point
-        self.opt.flags[mujoco.mjtVisFlag.mjVIS_INERTIA]      = inertia
+        self.opt.flags[mujoco.mjtVisFlag.mjVIS_INERTIA] = inertia
 
         # callback for overlay rendering
         self._callback: Callable[[mujoco.MjModel, mujoco.MjData, mujoco.MjvScene], None] | None = None
@@ -71,7 +68,7 @@ class GLViewport(QOpenGLWidget):
 
     def set_callback(self, fn: Callable[[mujoco.MjModel, mujoco.MjData, mujoco.MjvScene], None] | None) -> None:
         """Register a per-frame overlay callback or `None` to clear it.
-        
+
         TODO: Figure out how to do this for inter-process communication.
         """
         self._callback = fn
@@ -90,10 +87,8 @@ class GLViewport(QOpenGLWidget):
         if self.pert.active and self._on_forces is not None:
             self._on_forces(self._data.xfrc_applied.copy())
 
-        dpr  = self.devicePixelRatioF()
-        rect = mujoco.MjrRect(0, 0,
-                              int(self.width() * dpr),
-                              int(self.height() * dpr))
+        dpr = self.devicePixelRatioF()
+        rect = mujoco.MjrRect(0, 0, int(self.width() * dpr), int(self.height() * dpr))
 
         mujoco.mjv_updateScene(
             self.model,
@@ -119,12 +114,12 @@ class GLViewport(QOpenGLWidget):
             return
 
         # Ctrl-click: select MuJoCo body under cursor
-        dpr    = self.devicePixelRatioF()
-        width  = max(1, int(self.width()  * dpr))
+        dpr = self.devicePixelRatioF()
+        width = max(1, int(self.width() * dpr))
         height = max(1, int(self.height() * dpr))
         aspect = width / height
-        relx   = (self._last_x * dpr) / width
-        rely   = (height - self._last_y * dpr) / height
+        relx = (self._last_x * dpr) / width
+        rely = (height - self._last_y * dpr) / height
 
         selpnt = np.zeros(3, dtype=np.float64)
         geomid = np.zeros(1, dtype=np.int32)
@@ -132,35 +127,39 @@ class GLViewport(QOpenGLWidget):
         skinid = np.zeros(1, dtype=np.int32)
 
         gid = mujoco.mjv_select(
-            self.model, self._data, self.opt,
-            aspect, relx, rely,
-            self.scene, selpnt,
-            geomid, flexid, skinid,
+            self.model,
+            self._data,
+            self.opt,
+            aspect,
+            relx,
+            rely,
+            self.scene,
+            selpnt,
+            geomid,
+            flexid,
+            skinid,
         )
         if gid < 0:
             return
 
-        bodyid                = gid
-        self.pert.select      = bodyid
-        self.pert.skinselect  = int(skinid[0])
-        diff                  = selpnt - self._data.xpos[bodyid]
-        self.pert.localpos    = self._data.xmat[bodyid].reshape(3, 3) @ diff
-        self.pert.active      = (
-            mujoco.mjtPertBit.mjPERT_ROTATE
-            if self._mouse_btn == Qt.LeftButton else
-            mujoco.mjtPertBit.mjPERT_TRANSLATE
+        bodyid = gid
+        self.pert.select = bodyid
+        self.pert.skinselect = int(skinid[0])
+        diff = selpnt - self._data.xpos[bodyid]
+        self.pert.localpos = self._data.xmat[bodyid].reshape(3, 3) @ diff
+        self.pert.active = (
+            mujoco.mjtPertBit.mjPERT_ROTATE if self._mouse_btn == Qt.LeftButton else mujoco.mjtPertBit.mjPERT_TRANSLATE
         )
         mujoco.mjv_initPerturb(self.model, self._data, self.scene, self.pert)
         self.update()
 
     def mouseReleaseEvent(self, _ev):
         """End drag / perturb and send a zero-force flush."""
-
         released = self._mouse_btn
         self.pert.active = 0
-        self._mouse_btn  = None
+        self._mouse_btn = None
         self.update()
-        
+
         # Upon mouse release, flush a single "zero wrench" so the physics loop
         # knows the drag interaction has ended.
         if self._on_forces is not None:
@@ -169,7 +168,6 @@ class GLViewport(QOpenGLWidget):
 
     def mouseMoveEvent(self, ev):
         """Handle camera orbit, pan, and active perturb motion."""
-
         x, y = ev.position().x(), ev.position().y()
         dx, dy = x - self._last_x, y - self._last_y
         self._last_x, self._last_y = x, y
@@ -189,30 +187,32 @@ class GLViewport(QOpenGLWidget):
                 action = mujoco.mjtMouse.mjMOUSE_ROTATE_H
 
             mujoco.mjv_movePerturb(
-                self.model, self._data,
+                self.model,
+                self._data,
                 action,
-                dx / height, dy / height,
-                self.scene, self.pert,
+                dx / height,
+                dy / height,
+                self.scene,
+                self.pert,
             )
             self.update()
             return
 
         # Camera controls
         if self._mouse_btn == Qt.LeftButton:
-            self.cam.azimuth   += 0.25 * dx
+            self.cam.azimuth += 0.25 * dx
             self.cam.elevation += 0.25 * dy
             self.cam.elevation = np.clip(self.cam.elevation, -89.9, 89.9)
         elif self._mouse_btn == Qt.RightButton:
             scale = 0.002 * self.cam.distance
             right = np.array([1.0, 0.0, 0.0])
-            fwd   = np.array([0.0, 1.0, 0.0])
+            fwd = np.array([0.0, 1.0, 0.0])
             self.cam.lookat += (-dx * scale) * right + (dy * scale) * fwd
 
         self.update()
 
     def wheelEvent(self, ev):
         """Zoom the free camera in/out."""
-
         step = np.sign(ev.angleDelta().y())
         zoom_factor = 0.99 if step > 0 else 1.01
 
