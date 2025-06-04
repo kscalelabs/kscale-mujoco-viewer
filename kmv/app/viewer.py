@@ -27,9 +27,8 @@ import time
 import multiprocessing as mp
 
 from kmv.core.types import RenderMode, ViewerConfig
-from kmv.core.buffer import RingBuffer          # used for off-screen mode
-from kmv.core import schema                     # declares default streams
-from kmv.ipc.state import SharedArrayRing
+from kmv.core import streams                     # declares default streams
+from kmv.ipc.shared_ring import SharedMemoryRing
 from kmv.ipc.control import ControlPipe, make_metrics_queue
 from kmv.worker.entrypoint import run_worker
 
@@ -46,11 +45,11 @@ def _compile_model_to_mjb(model: mujoco.MjModel) -> Path:
     return Path(tmp.name)
 
 
-def _build_shm_rings(model: mujoco.MjModel) -> dict[str, SharedArrayRing]:
+def _build_shm_rings(model: mujoco.MjModel) -> dict[str, SharedMemoryRing]:
     """Create rings for every stream defined in `core.schema`."""
-    rings: dict[str, SharedArrayRing] = {}
-    for name, shape in schema.default_streams(model).items():
-        rings[name] = SharedArrayRing(create=True, shape=shape)
+    rings: dict[str, SharedMemoryRing] = {}
+    for name, shape in streams.default_streams(model).items():
+        rings[name] = SharedMemoryRing(create=True, shape=shape)
     return rings
 
 

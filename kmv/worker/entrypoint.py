@@ -22,7 +22,7 @@ from multiprocessing import Queue
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore    import QTimer
 
-from kmv.ipc.state       import SharedArrayRing
+from kmv.ipc.shared_ring       import SharedMemoryRing
 from kmv.worker.window   import ViewerWindow      # will be implemented next
 
 
@@ -51,7 +51,7 @@ def run_worker(
 
     # ---- 2.  Attach to shared rings ---------------------------------- #
     rings = {
-        name: SharedArrayRing(create=False, **cfg)
+        name: SharedMemoryRing(create=False, **cfg)
         for name, cfg in shm_cfg.items()
     }
 

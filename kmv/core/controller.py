@@ -5,7 +5,7 @@ from typing import Mapping, Callable
 import numpy as np
 import mujoco
 
-from kmv.ipc.state import SharedArrayRing
+from kmv.ipc.shared_ring import SharedMemoryRing
 from kmv.core.types import Msg, ForcePacket, TelemetryPacket, PlotPacket
 
 _Array = np.ndarray
@@ -20,7 +20,7 @@ class RenderLoop:
         self,
         model: mujoco.MjModel,
         data: mujoco.MjData,
-        rings: Mapping[str, SharedArrayRing],
+        rings: Mapping[str, SharedMemoryRing],
         *,
         on_forces: _OnForces | None = None,
         get_table: Callable[[], TelemetryPacket | None],

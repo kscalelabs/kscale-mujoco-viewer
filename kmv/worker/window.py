@@ -4,7 +4,7 @@
 
 It receives:
 * a compiled `mjModel` and private `mjData`
-* a dict of SharedArrayRings (state streams)
+* a dict of SharedMemoryRings (state streams)
 * the telemetry queue
 * a few cosmetic options
 
@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 # QAction actually sits in QtGui
 from PySide6.QtGui import QAction
 
-from kmv.ipc.state       import SharedArrayRing
+from kmv.ipc.shared_ring       import SharedMemoryRing
 from multiprocessing.connection import Connection
 from kmv.ui.viewport     import GLViewport
 from kmv.ui.plot         import ScalarPlot
@@ -54,7 +54,7 @@ class ViewerWindow(QMainWindow):
         self,
         model: mujoco.MjModel,
         data: mujoco.MjData,
-        rings: Mapping[str, SharedArrayRing],
+        rings: Mapping[str, SharedMemoryRing],
         *,
         table_q,
         plot_q,

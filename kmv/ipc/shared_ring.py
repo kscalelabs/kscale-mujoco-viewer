@@ -1,11 +1,9 @@
-# kmv/ipc/state.py
+# kmv/ipc/shared_ring.py
 """
-Shared-memory, fixed-shape ring buffer for **bulk numeric arrays**
-(qpos, qvel, RGB frames, …).
+Shared-memory ring (single producer / single consumer).
 
-Only NumPy + multiprocessing.shared_memory are imported, so this module can be
-used by both the sim process (creator / writer) and the GUI process (attacher /
-reader) without pulling in Qt or MuJoCo.
+Import cost kept in ipc/ so pure-Python paths don't pull in
+`multiprocessing.shared_memory`.
 """
 
 from __future__ import annotations
@@ -17,7 +15,7 @@ from typing import Tuple
 import numpy as np        
 import gc, warnings
 
-__all__ = ["SharedArrayRing"]
+__all__ = ["SharedMemoryRing"]
 
 # -----------------------------------------------------------------------------#
 #  Configuration constants
@@ -31,7 +29,7 @@ _DTYPE            = np.float64
 #  Implementation
 # -----------------------------------------------------------------------------#
 
-class SharedArrayRing:
+class SharedMemoryRing:
     """
     A **single-producer / single-consumer** ring in anonymous shared memory.
 
@@ -99,6 +97,11 @@ class SharedArrayRing:
         # (3) simple lock ---------------------------------------------
         self._lock = Lock()
 
+        # (4) usage counters for Ring protocol compatibility
+        self._push_ctr = 0
+        self._pop_ctr = 0
+        self._current_size = 0
+
     # ------------------------------------------------------------------ #
     #  Producer API
     # ------------------------------------------------------------------ #
@@ -112,6 +115,9 @@ class SharedArrayRing:
             i = (self._idx.value + 1) & self._mask
             self._buf[i, :] = arr.ravel()   # ① copy first
             self._idx.value = i             # ② publish index *after* data
+            self._push_ctr += 1
+            if self._current_size < self.capacity:
+                self._current_size += 1
 
     # ------------------------------------------------------------------ #
     #  Consumer API
@@ -121,7 +127,27 @@ class SharedArrayRing:
         """Return a **copy** of the newest element."""
         i   = self._idx.value & self._mask     # defensive mask
         out = self._buf[i].copy().reshape(self.shape)
+        self._pop_ctr += 1
         return out
+
+    # ------------------------------------------------------------------ #
+    #  Ring protocol compliance
+    # ------------------------------------------------------------------ #
+
+    def __len__(self) -> int:
+        """Return current number of elements in the ring."""
+        with self._lock:
+            return self._current_size
+
+    @property
+    def push_count(self) -> int:
+        """Total number of elements pushed since creation."""
+        return self._push_ctr
+
+    @property
+    def pop_count(self) -> int:
+        """Total number of elements popped since creation."""
+        return self._pop_ctr
 
     # ------------------------------------------------------------------ #
     #  House-keeping
@@ -154,7 +180,7 @@ class SharedArrayRing:
         except BufferError as err:
             # probably some external view still alive – emit warning and move on
             warnings.warn(
-                f"SharedArrayRing.close(): leaked view detected ({err}). "
+                f"SharedMemoryRing.close(): leaked view detected ({err}). "
                 "Shared memory left mapped.", RuntimeWarning, stacklevel=2
             )
 
