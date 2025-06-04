@@ -1,7 +1,5 @@
 """Defines the stream format for the viewer."""
 
-from __future__ import annotations
-
 from typing import Mapping, Tuple
 
 import mujoco

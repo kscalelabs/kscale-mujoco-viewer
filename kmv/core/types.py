@@ -1,7 +1,5 @@
 """Defines types and dataclasses for the viewer."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Literal, Mapping, Optional, Tuple
 
