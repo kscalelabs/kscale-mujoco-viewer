@@ -35,6 +35,8 @@ namespace_packages = false
 module = [
     "mujoco.*",
     "pyqtgraph.*",
+    "imageio.*",
+    "PIL.*",
 ]
 ignore_missing_imports = true
 
