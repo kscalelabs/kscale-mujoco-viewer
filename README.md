@@ -2,6 +2,8 @@
 
 Mujoco viewer maintained by K-Scale Labs.
 
+https://github.com/user-attachments/assets/5312fa03-7215-4c1b-9d66-acaa18b96a3c
+
 ## Installation
 
 ```bash
