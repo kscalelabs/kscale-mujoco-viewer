@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
-from PySide6.QtWidgets import QTableView
+from PySide6.QtWidgets import QTableView, QWidget
 
 
 class _TableModel(QAbstractTableModel):
@@ -15,15 +15,15 @@ class _TableModel(QAbstractTableModel):
     in the new metrics are filled with `None` so the row order remains stable.
     """
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._rows: list[tuple[str, Any]] = []
         self._known_keys: set[str] = set()
 
-    def rowCount(self, *_):
+    def rowCount(self, *_) -> int:
         return len(self._rows)
 
-    def columnCount(self, *_):
+    def columnCount(self, *_) -> int:
         return 2
 
     def data(self, index: QModelIndex, role=Qt.DisplayRole):
@@ -48,7 +48,7 @@ class _TableModel(QAbstractTableModel):
 class ViewerStatsTable(QTableView):
     """Helper that Wraps `_TableModel` and adds `.update()`."""
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._model = _TableModel(self)
         self.setModel(self._model)

@@ -22,7 +22,7 @@ Scalars = Mapping[str, float]
 
 @dataclass
 class Msg:
-    """Base message class for control-pipe messages"""
+    """Base message class for control-pipe messages."""
 
     pass
 

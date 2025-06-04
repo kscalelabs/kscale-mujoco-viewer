@@ -13,6 +13,7 @@ import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtWidgets import QWidget
 
 _fmt = QSurfaceFormat()
 _fmt.setDepthBufferSize(24)
@@ -36,7 +37,7 @@ class GLViewport(QOpenGLWidget):
         contact_point: bool = False,
         inertia: bool = False,
         on_forces: Optional[Callable[[np.ndarray], None]] = None,
-        parent=None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -105,7 +106,7 @@ class GLViewport(QOpenGLWidget):
 
         mujoco.mjr_render(rect, self.scene, self._ctx)
 
-    def mousePressEvent(self, ev):
+    def mousePressEvent(self, ev) -> None:
         """Start drag or body-perturb interaction (Ctrl-click)."""
         self._mouse_btn = ev.button()
         self._last_x, self._last_y = ev.position().x(), ev.position().y()
@@ -153,9 +154,8 @@ class GLViewport(QOpenGLWidget):
         mujoco.mjv_initPerturb(self.model, self._data, self.scene, self.pert)
         self.update()
 
-    def mouseReleaseEvent(self, _ev):
+    def mouseReleaseEvent(self, _ev) -> None:
         """End drag / perturb and send a zero-force flush."""
-        released = self._mouse_btn
         self.pert.active = 0
         self._mouse_btn = None
         self.update()
@@ -166,7 +166,7 @@ class GLViewport(QOpenGLWidget):
             zero_xrfc = np.zeros_like(self._data.xfrc_applied)
             self._on_forces(zero_xrfc)
 
-    def mouseMoveEvent(self, ev):
+    def mouseMoveEvent(self, ev) -> None:
         """Handle camera orbit, pan, and active perturb motion."""
         x, y = ev.position().x(), ev.position().y()
         dx, dy = x - self._last_x, y - self._last_y
@@ -211,7 +211,7 @@ class GLViewport(QOpenGLWidget):
 
         self.update()
 
-    def wheelEvent(self, ev):
+    def wheelEvent(self, ev) -> None:
         """Zoom the free camera in/out."""
         step = np.sign(ev.angleDelta().y())
         zoom_factor = 0.99 if step > 0 else 1.01
