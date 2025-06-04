@@ -79,7 +79,7 @@ def save_video(frames: list[np.ndarray], save_path: str | Path, fps: int = 30) -
             try:
                 with imageio.get_writer(path, mode="I", fps=fps) as writer:
                     for frame in frames:
-                        writer.append_data(frame)  # type: ignore[attr-defined]
+                        writer.append_data(frame)
 
                     logger.info("Saved mp4 video with %d frames to: %s", len(frames), path)
             except Exception as e:
