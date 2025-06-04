@@ -17,12 +17,11 @@ from PySide6.QtGui  import QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 
-# -- configure default OpenGL format (anti-aliasing, depth, vsync) ------------
 _fmt = QSurfaceFormat()
 _fmt.setDepthBufferSize(24)
 _fmt.setStencilBufferSize(8)
 _fmt.setSamples(4)
-_fmt.setSwapInterval(1)                # vsync
+_fmt.setSwapInterval(1)
 QSurfaceFormat.setDefaultFormat(_fmt)
 
 
@@ -36,8 +35,6 @@ class GLViewport(QOpenGLWidget):
     • Wheel  : zoom
     • Ctrl-drag (L/R) : body perturb (rotate / translate) – generates forces
     """
-
-    # ------------------------------------------------------------------ #
 
     def __init__(
         self,
@@ -79,16 +76,8 @@ class GLViewport(QOpenGLWidget):
         self._last_x = 0.0
         self._last_y = 0.0
 
-    # ------------------------------------------------------------------ #
-    #  Public helpers
-    # ------------------------------------------------------------------ #
-
     def set_callback(self, fn: Callable[[mujoco.MjModel, mujoco.MjData, mujoco.MjvScene], None] | None) -> None:
         self._callback = fn
-
-    # ------------------------------------------------------------------ #
-    #  OpenGL lifecycle
-    # ------------------------------------------------------------------ #
 
     def initializeGL(self) -> None:
         self._ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_150)
@@ -99,7 +88,6 @@ class GLViewport(QOpenGLWidget):
         mujoco.mjv_applyPerturbPose(self.model, self._data, self.pert, 0)
         mujoco.mjv_applyPerturbForce(self.model, self._data, self.pert)
 
-        # ── NEW: stream wrench continuously while dragging ────────────── #
         if self.pert.active and self._on_forces is not None:
             self._on_forces(self._data.xfrc_applied.copy())
 
@@ -123,18 +111,14 @@ class GLViewport(QOpenGLWidget):
 
         mujoco.mjr_render(rect, self.scene, self._ctx)
 
-    # ------------------------------------------------------------------ #
-    #  Mouse interaction (camera + perturb)
-    # ------------------------------------------------------------------ #
-
-    def mousePressEvent(self, ev):                         # type: ignore[override]
+    def mousePressEvent(self, ev):
         self._mouse_btn = ev.button()
         self._last_x, self._last_y = ev.position().x(), ev.position().y()
 
         if not (ev.modifiers() & Qt.ControlModifier):
             return
 
-        # Ctrl-click → select MuJoCo body under cursor
+        # Ctrl-click: select MuJoCo body under cursor
         dpr    = self.devicePixelRatioF()
         width  = max(1, int(self.width()  * dpr))
         height = max(1, int(self.height() * dpr))
@@ -169,39 +153,36 @@ class GLViewport(QOpenGLWidget):
         mujoco.mjv_initPerturb(self.model, self._data, self.scene, self.pert)
         self.update()
 
-    def mouseReleaseEvent(self, _ev):                      # type: ignore[override]
+    def mouseReleaseEvent(self, _ev):
         released = self._mouse_btn
         self.pert.active = 0
         self._mouse_btn  = None
         self.update()
-
-        # ── NEW ────────────────────────────────────────────────
-        # Flush a single "zero wrench" so the physics loop
+        
+        # Upon mouse release, flush a single "zero wrench" so the physics loop
         # knows the drag interaction has ended.
         if self._on_forces is not None:
             zero_xrfc = np.zeros_like(self._data.xfrc_applied)
             self._on_forces(zero_xrfc)
 
-    def mouseMoveEvent(self, ev):                          # type: ignore[override]
+    def mouseMoveEvent(self, ev):
         x, y = ev.position().x(), ev.position().y()
         dx, dy = x - self._last_x, y - self._last_y
         self._last_x, self._last_y = x, y
 
-        if self.pert.active:                               # Ctrl-drag → perturb
+        if self.pert.active:
             height = max(1, self.height())
 
             if self.pert.active == mujoco.mjtPertBit.mjPERT_TRANSLATE:
-                # ---------------------------------------------------------- #
-                # Ctrl-drag           → vertical translate  (MOVE_V)
-                # Shift + Ctrl-drag   → horizontal translate (MOVE_H)
-                # ---------------------------------------------------------- #
+                # Ctrl pressed: move vertically
+                # Shift + Ctrl pressed: move horizontally
                 action = (
-                    mujoco.mjtMouse.mjMOUSE_MOVE_H              # ⇧ held  → horizontal
+                    mujoco.mjtMouse.mjMOUSE_MOVE_H
                     if (ev.modifiers() & Qt.ShiftModifier)
-                    else mujoco.mjtMouse.mjMOUSE_MOVE_V          # default → vertical
+                    else mujoco.mjtMouse.mjMOUSE_MOVE_V
                 )
-            else:                                               # rotate branch
-                action = mujoco.mjtMouse.mjMOUSE_ROTATE_H       # unchanged
+            else:
+                action = mujoco.mjtMouse.mjMOUSE_ROTATE_H
 
             mujoco.mjv_movePerturb(
                 self.model, self._data,
@@ -212,7 +193,7 @@ class GLViewport(QOpenGLWidget):
             self.update()
             return
 
-        # normal camera controls
+        # Camera controls
         if self._mouse_btn == Qt.LeftButton:
             self.cam.azimuth   += 0.25 * dx
             self.cam.elevation += 0.25 * dy
@@ -225,15 +206,12 @@ class GLViewport(QOpenGLWidget):
 
         self.update()
 
-    # ------------------------------------------------------------------ #
-    #  Mouse-wheel zoom  (softer: ~4 % per notch instead of 10 %)
-    # ------------------------------------------------------------------ #
     def wheelEvent(self, ev):
-        # One standard notch on most mice → angleDelta().y() = ±120
-        step = np.sign(ev.angleDelta().y())          # +1 (zoom-in) / −1 (out)
-        zoom_factor = 0.99 if step > 0 else 1.01     # ← 4 % change
+        # One standard notch on most mice: angleDelta().y() = ±120
+        step = np.sign(ev.angleDelta().y())
+        zoom_factor = 0.99 if step > 0 else 1.01
 
-        # apply & clamp
+        # Apply & clamp
         self.cam.distance *= zoom_factor
         self.cam.distance = np.clip(self.cam.distance, 0.1, 100.0)
         self.update()

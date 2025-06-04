@@ -32,7 +32,6 @@ class RenderLoop:
         self._get_table = get_table
         self._get_plot  = get_plot
 
-        # ── perf & bookkeeping ──────────────────────────────
         self._fps_timer   = time.perf_counter()
         self._frame_ctr   = 0
         self.fps          = 0.0
@@ -53,29 +52,18 @@ class RenderLoop:
         self._sim_offset  = 0.0
         self._reset_tol   = 1e-9
 
-        # latest GUI consumables
         self._last_table: dict[str, float] = {}
         self._plots_latest: dict[str, _Scalars] = {}
-        self._last_plot: PlotPacket | None = None   # ← kept for legacy access
 
-    # ------------------------------------------------------------------ #
-    # public façade – one call per GUI frame
-    # ------------------------------------------------------------------ #
     def tick(self) -> None:
         """Advance state **and** update `mjData` in-place."""
 
-        # 1.  Pull latest physics
         self._pull_state()
 
-        # 2.  Drain metrics queues
         self._drain_metrics()
 
-        # 3.  Recompute derived counters (FPS etc.)
         self._account_timing()
 
-    # ------------------------------------------------------------------ #
-    # internals
-    # ------------------------------------------------------------------ #
     def _pull_state(self) -> None:
         qpos = self._rings["qpos"].latest()
         qvel = self._rings["qvel"].latest()
@@ -96,7 +84,6 @@ class RenderLoop:
         while (pkt := self._get_table()) is not None:
             self._last_table.update(pkt.rows)
 
-            # live physics-throughput
             if "Phys Iters" in pkt.rows:
                 now = time.perf_counter()
                 dt  = now - self._phys_iters_prev_time
@@ -108,8 +95,7 @@ class RenderLoop:
                 self._phys_iters_prev_time = now
 
         while (pkt := self._get_plot()) is not None:
-            self._plots_latest[pkt.group] = pkt.scalars   # remember per-group
-            self._last_plot = pkt                        # backward-compat
+            self._plots_latest[pkt.group] = pkt.scalars
             self._plot_ctr += 1
 
     def _account_timing(self) -> None:

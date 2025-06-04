@@ -48,8 +48,6 @@ class ViewerWindow(QMainWindow):
     Composes:  | GLViewport |  ScalarPlot  |  TelemetryTable |
     """
 
-    # ------------------------------------------------------------------ #
-
     def __init__(
         self,
         model: mujoco.MjModel,
@@ -77,7 +75,6 @@ class ViewerWindow(QMainWindow):
         self.resize(width, height)
         self.setWindowTitle("KMV Viewer")
 
-        # -- keep references -------------------------------------------------- #
         self._model      = model
         self._data       = data
         self._rings      = rings
@@ -85,7 +82,6 @@ class ViewerWindow(QMainWindow):
         self._plot_q     = plot_q
         self._ctrl_send  = ctrl_send
 
-        # -- central OpenGL viewport ----------------------------------------- #
         self._viewport = GLViewport(
             model,
             data,
@@ -99,7 +95,6 @@ class ViewerWindow(QMainWindow):
         )
         self.setCentralWidget(self._viewport)
 
-        # -- status-bar -------------------------------------------------------- #
         bar = QStatusBar(self)
         bar.setContentsMargins(16, 0, 0, 0)
         bar.setSizeGripEnabled(False)
@@ -117,39 +112,34 @@ class ViewerWindow(QMainWindow):
         self._lbl_wallt  = _add_status("Wall Time: –")
         self._lbl_reset  = _add_status("Resets: 0")
 
-        # -- live scalar plot -------------------------------------------------- #
         self._plots: dict[str, ScalarPlot] = {}
         self._plot_docks:  dict[str, QDockWidget] = {}
         self._plot_actions: dict[str, QAction] = {}
         self._enable_plots = enable_plots
 
-        # ── menu bar → "Plots" drop-down ---------------------------------- #
+
         menubar = self.menuBar()
-        menubar.setNativeMenuBar(False)      # ← keep it inside the window on macOS
+        menubar.setNativeMenuBar(False)
         self._plots_menu = menubar.addMenu("&Plots")
 
-        # ------------------------------------------------------------------ #
-        #  NEW  menu just for the Telemetry table
-        # ------------------------------------------------------------------ #
         self._telemetry_menu = menubar.addMenu("&Viewer Stats")
 
-        # -- telemetry table --------------------------------------------------- #
-        self._telemetry_table = ViewerStatsTable(self)      # <-- widget, not model
+        self._telemetry_table = ViewerStatsTable(self)
         table_dock = QDockWidget("Viewer Stats", self)
         table_dock.setWidget(self._telemetry_table)
         self.addDockWidget(Qt.RightDockWidgetArea, table_dock)
-        table_dock.hide()                                 # start hidden
+        table_dock.hide()
 
-        #   menu ↔ dock synchronisation (checkbox behaviour)
+        # Menu and dock synchronisation
         telem_action = QAction("Show viewer stats", self, checkable=True)
-        telem_action.setChecked(False)                    # unchecked = hidden
+        telem_action.setChecked(False)
         telem_action.toggled.connect(table_dock.setVisible)
         table_dock.visibilityChanged.connect(telem_action.setChecked)
         self._telemetry_menu.addAction(telem_action)
 
         self.show()
 
-        # ── apply *initial camera* parameters (optional) ------------------ #
+        # Apply camera parameters
         cam = self._viewport.cam
         if cfg.camera_distance  is not None: cam.distance  = cfg.camera_distance
         if cfg.camera_azimuth   is not None: cam.azimuth   = cfg.camera_azimuth
@@ -159,7 +149,6 @@ class ViewerWindow(QMainWindow):
             cam.trackbodyid = cfg.track_body_id
             cam.type        = mujoco.mjtCamera.mjCAMERA_TRACKING
 
-        # call in __init__ right after last field is set
         self.__post_init_render_loop()
 
     def __post_init_render_loop(self):
@@ -189,7 +178,6 @@ class ViewerWindow(QMainWindow):
             get_plot=get_plot_packet,
         )
 
-    # ───────────────────────────────────────────────────────────────────── #
     def _plot_for_group(self, group: str) -> ScalarPlot:
         """
         Lazily create one dock + QAction per *group*.  The dock starts hidden;
@@ -198,50 +186,47 @@ class ViewerWindow(QMainWindow):
         if group in self._plots:
             return self._plots[group]
 
-        # (1) graphics widget ------------------------------------------------ #
+        # Graphics widget
         plot = ScalarPlot(history=600, max_curves=32)
         dock = QDockWidget(group.capitalize(), self)
         dock.setWidget(plot)
         self.addDockWidget(Qt.BottomDockWidgetArea, dock)
-        dock.hide()                                    # ← hidden by default
+        dock.hide()
 
-        # (2) menu action ---------------------------------------------------- #
+        # Menu action
         action = QAction(group.capitalize(), self, checkable=True)
-        action.setChecked(False)                      # unchecked = hidden
-        # bidirectional sync  (menu → dock)
+        action.setChecked(False)
+        # Bidirectional sync (menu to dock)
         action.toggled.connect(dock.setVisible)
-        # …and (dock → menu) in case user closes the dock title-bar "X"
+        # …and (dock to menu) in case user closes the dock title-bar "X"
         dock.visibilityChanged.connect(action.setChecked)
         self._plots_menu.addAction(action)
 
-        # (3) bookkeeping ---------------------------------------------------- #
+        # Bookkeeping
         self._plots[group]        = plot
         self._plot_docks[group]   = dock
         self._plot_actions[group] = action
         return plot
 
-    # ------------------------------------------------------------------ #
-    # public – called by QTimer
-    # ------------------------------------------------------------------ #
     def step_and_draw(self) -> None:
-        """One GUI frame (~60 Hz) – now only 5 lines!"""
-        self._rl.tick()                         # 1. pure-Python update
+        """One GUI frame (~60 Hz)"""
+        self._rl.tick()
 
-        # 2. full table
+        # Full table
         self._telemetry_table.update(self._rl._last_table)
 
-        #   status-bar mirrors
+        # Status-bar mirrors
         self._lbl_fps.setText(  f"FPS: {self._rl.fps:5.1f}")
         self._lbl_phys.setText( f"Phys/s: {self._rl.phys_iters_per_sec:5.1f}")
         self._lbl_simt.setText( f"Sim t: {self._rl.sim_time_abs:6.2f}")
         self._lbl_wallt.setText(f"Wall t: {self._rl._last_table.get('Wall Time', 0):6.2f}")
         self._lbl_reset.setText(f"Resets: {self._rl.reset_count}")
 
-        # 3. forward *all* groups
+        # Forward all groups
         if self._enable_plots:
             for group, scalars in self._rl._plots_latest.items():
                 plot = self._plot_for_group(group)
                 plot.update_data(self._rl.sim_time_abs, scalars)
 
-        # 4. finally trigger paint
+        # Trigger paint
         self._viewport.update()

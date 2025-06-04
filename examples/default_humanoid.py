@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Sanity-check for the new *out-of-process* viewer.
 
@@ -22,18 +21,15 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    # ---------- logging ------------------------------------------------ #
     colorlogging.configure()
     xml_path = Path(__file__).parent.parent / "tests" / "assets" / "humanoid.xml"
     logger.info("Loading model: %s", xml_path)
 
-    # ---------- compile model ----------------------------------------- #
     physics_dt = 0.02
     model = mujoco.MjModel.from_xml_path(str(xml_path))
     model.opt.timestep = physics_dt
     data  = mujoco.MjData(model)
 
-    # ---------- launch viewer ----------------------------------------- #
     viewer = QtViewer(model, enable_plots=True)
 
     # push one frame so GUI window pops immediately
@@ -41,10 +37,9 @@ def main() -> None:
 
     logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C to quit")
 
-    # ---------- main loop --------------------------------------------- #
     sim_it   = 0
-    t0_wall  = time.perf_counter()        # high-res timer
-    dt       = physics_dt                 # 0.002 s = 500 Hz
+    t0_wall  = time.perf_counter()
+    dt       = physics_dt
     pending_xfrc = None
 
     try:

@@ -1,4 +1,3 @@
-# kmv/ipc/shared_ring.py
 """
 Shared-memory ring (single producer / single consumer).
 
@@ -17,17 +16,9 @@ import gc, warnings
 
 __all__ = ["SharedMemoryRing"]
 
-# -----------------------------------------------------------------------------#
-#  Configuration constants
-# -----------------------------------------------------------------------------#
-
-_CAPACITY_DEFAULT = 64       # power-of-two so we can mask indices
+_CAPACITY_DEFAULT = 64 # Needs to be a power of two so we can mask indices
 _DTYPE            = np.float64
 
-
-# -----------------------------------------------------------------------------#
-#  Implementation
-# -----------------------------------------------------------------------------#
 
 class SharedMemoryRing:
     """
@@ -54,8 +45,6 @@ class SharedMemoryRing:
 
     HEADER_BYTES = ctypes.sizeof(ctypes.c_uint32)   # 4
 
-    # ───────────────────────────────────────────────────────────────────── #
-
     def __init__(
         self,
         *,
@@ -69,7 +58,7 @@ class SharedMemoryRing:
                 "capacity must be a power of two and ≥1 "
                 f"(got {capacity})"
             )
-        self._mask = capacity - 1          # single xor-able mask
+        self._mask = capacity - 1
 
         self.shape      = shape
         self.capacity   = capacity
@@ -77,15 +66,12 @@ class SharedMemoryRing:
         self._bytes     = self.elem_size * _DTYPE().nbytes
         shm_bytes       = self.HEADER_BYTES + capacity * self._bytes
 
-        # (1) allocate or attach ------------------------------------------------
         self._shm = shared_memory.SharedMemory(
             name=name, create=create, size=shm_bytes
         )
 
-        # 1) map the first 4 bytes to a *shared* uint32 cursor
         self._idx = ctypes.c_uint32.from_buffer(self._shm.buf, 0)
 
-        # 2) the actual ring starts right after the header
         buf_start = self.HEADER_BYTES
         self._buf = np.ndarray(
             (capacity, self.elem_size), 
@@ -94,17 +80,11 @@ class SharedMemoryRing:
             offset=buf_start,
         )
 
-        # (3) simple lock ---------------------------------------------
         self._lock = Lock()
 
-        # (4) usage counters for Ring protocol compatibility
         self._push_ctr = 0
         self._pop_ctr = 0
         self._current_size = 0
-
-    # ------------------------------------------------------------------ #
-    #  Producer API
-    # ------------------------------------------------------------------ #
 
     def push(self, arr: np.ndarray) -> None:
         """Copy *arr* into the next slot; arr must match `shape`."""
@@ -113,26 +93,18 @@ class SharedMemoryRing:
 
         with self._lock:
             i = (self._idx.value + 1) & self._mask
-            self._buf[i, :] = arr.ravel()   # ① copy first
-            self._idx.value = i             # ② publish index *after* data
+            self._buf[i, :] = arr.ravel()
+            self._idx.value = i
             self._push_ctr += 1
             if self._current_size < self.capacity:
                 self._current_size += 1
 
-    # ------------------------------------------------------------------ #
-    #  Consumer API
-    # ------------------------------------------------------------------ #
-
     def latest(self) -> np.ndarray:
         """Return a **copy** of the newest element."""
-        i   = self._idx.value & self._mask     # defensive mask
+        i   = self._idx.value & self._mask
         out = self._buf[i].copy().reshape(self.shape)
         self._pop_ctr += 1
         return out
-
-    # ------------------------------------------------------------------ #
-    #  Ring protocol compliance
-    # ------------------------------------------------------------------ #
 
     def __len__(self) -> int:
         """Return current number of elements in the ring."""
@@ -149,10 +121,6 @@ class SharedMemoryRing:
         """Total number of elements popped since creation."""
         return self._pop_ctr
 
-    # ------------------------------------------------------------------ #
-    #  House-keeping
-    # ------------------------------------------------------------------ #
-
     @property
     def name(self) -> str:
         """SharedMemory block name – needed by the attacher."""
@@ -165,20 +133,17 @@ class SharedMemoryRing:
         """
 
 
-        # 1. drop local views we own
         try:
             del self._buf
             del self._idx
         except AttributeError:
             pass
 
-        gc.collect()                      # ensure ref-counts hit zero
+        gc.collect()
 
-        # 2. single close attempt
         try:
             self._shm.close()
         except BufferError as err:
-            # probably some external view still alive – emit warning and move on
             warnings.warn(
                 f"SharedMemoryRing.close(): leaked view detected ({err}). "
                 "Shared memory left mapped.", RuntimeWarning, stacklevel=2

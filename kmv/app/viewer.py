@@ -1,4 +1,3 @@
-# kmv/app/viewer.py
 """
 `Viewer` – the *only* class your RL / control loop talks to.
 
@@ -33,10 +32,6 @@ from kmv.ipc.control import ControlPipe, make_metrics_queue
 from kmv.worker.entrypoint import run_worker
 
 
-# --------------------------------------------------------------------------- #
-#  Helpers
-# --------------------------------------------------------------------------- #
-
 def _compile_model_to_mjb(model: mujoco.MjModel) -> Path:
     """Write `model` to a temp .mjb file and return the path."""
     tmp = tempfile.NamedTemporaryFile(suffix=".mjb", delete=False)
@@ -53,10 +48,6 @@ def _build_shm_rings(model: mujoco.MjModel) -> dict[str, SharedMemoryRing]:
     return rings
 
 
-# --------------------------------------------------------------------------- #
-#  Public class
-# --------------------------------------------------------------------------- #
-
 class QtViewer:
     """
     High-level out-of-process viewer.
@@ -69,8 +60,6 @@ class QtViewer:
     ...     viewer.push_state(data.qpos, data.qvel, sim_time=data.time)
     ...     forces = viewer.poll_forces()
     """
-
-    # ------------------------------------------------------------------ #
 
     def __init__(
         self,
@@ -97,7 +86,6 @@ class QtViewer:
         if mode not in ("window", "offscreen"):
             raise ValueError(f"unknown render mode {mode!r}")
 
-        # ---- one-line conversion to canonical config --------------------- #
         config = ViewerConfig(
             width           = width,
             height          = height,
@@ -118,54 +106,45 @@ class QtViewer:
         self._config = config        # store for later
         self._tmp_mjb_path = _compile_model_to_mjb(mj_model)
 
-        # ---------- shared memory for bulk state ----------------------- #
         self._rings = _build_shm_rings(mj_model)
         shm_cfg = {
             name: {"name": ring.name, "shape": ring.shape}
             for name, ring in self._rings.items()
         }
 
-        # ---------- control & metrics IPC ------------------------------ #
         self._ctrl      = ControlPipe()
         ctx             = mp.get_context("spawn")
         self._table_q   = make_metrics_queue()
         self._plot_q    = make_metrics_queue()
 
-        # ── NEW: physics-state push counter -------------------------------- #
-        self._push_ctr  = 0            # total calls to .push_state()
-        self._closed = False           # ← NEW sentinel
+        self._push_ctr  = 0
+        self._closed = False
 
-        # ---------- spawn GUI process ---------------------------------- #
         self._proc = ctx.Process(
             target=run_worker,
             args=(
                 str(self._tmp_mjb_path),
                 shm_cfg,
-                self._ctrl.sender(),       # control pipe
-                self._table_q,             # NEW
-                self._plot_q,              # NEW
-                config,                    # dataclass – picklable
+                self._ctrl.sender(),
+                self._table_q,
+                self._plot_q,
+                config,
             ),
             daemon=True,
         )
         self._proc.start()
 
-        # ── wait for the GUI to say "ready" ------------------------------ #
         _t0 = time.perf_counter()
         while True:
-            if self._ctrl.poll():               # message waiting
+            if self._ctrl.poll():
                 tag, _ = self._ctrl.recv()
                 if tag == "ready":
-                    break                       # handshake complete
-                if tag == "shutdown":           # early exit in worker
+                    break
+                if tag == "shutdown":
                     raise RuntimeError("Viewer process terminated during start-up")
             if (time.perf_counter() - _t0) > 5.0:
                 raise TimeoutError("Viewer did not initialise within 5 s")
-            time.sleep(0.01)                    # keep the loop cheap
-
-    # ------------------------------------------------------------------ #
-    #  Producer helpers – called from sim loop
-    # ------------------------------------------------------------------ #
+            time.sleep(0.01)
 
     @property
     def is_open(self) -> bool:
@@ -184,24 +163,13 @@ class QtViewer:
         if self._closed:
             return
 
-        # ① keep local running total (cheap & thread-safe under GIL)
         self._push_ctr += 1
 
         self._rings["qpos"].push(qpos)
         self._rings["qvel"].push(qvel)
         self._rings["sim_time"].push(np.asarray([sim_time], dtype=np.float64))
 
-        if xfrc_applied is not None:
-            # If you later add a ring for forces, push here
-            pass
-
-        # ② stream the counter to GUI – exactly the same path used for "iters"
-        #    (small dict → bounded multiprocessing.Queue)
         self._table_q.put({"Phys Iters": self._push_ctr})
-
-    # ------------------------------------------------------------------ #
-    #  New convenience helpers
-    # ------------------------------------------------------------------ #
 
     def push_table_metrics(self, metrics: Mapping[str, float]) -> None:
         """Send key-value pairs to the telemetry table only."""
@@ -226,10 +194,6 @@ class QtViewer:
             return
         self._plot_q.put({"group": group, "scalars": dict(scalars)})
 
-    # ------------------------------------------------------------------ #
-    #  Consumer helper – drag forces coming back
-    # ------------------------------------------------------------------ #
-
     def poll_forces(self) -> np.ndarray | None:
         """
         Non-blocking.  Returns the latest ``xfrc_applied`` array generated by
@@ -245,36 +209,33 @@ class QtViewer:
                 if tag == "forces":
                     out = payload
                 elif tag == "shutdown":
-                    self.close()          # sets _closed
+                    self.close()
             return out
 
-        except (OSError, EOFError):       # pipe already gone
+        except (OSError, EOFError):
             self._closed = True
             return None
 
-    # ------------------------------------------------------------------ #
-    #  Shutdown
-    # ------------------------------------------------------------------ #
-
     def close(self) -> None:
-        """Ask the worker to quit, wait, *then* unlink shared memory."""
+        """Ask the worker to quit, wait, *then* unlink shared memory.
+        
+        It is important to do this cleanup to prevent the viewer from leaking
+        shared memory.
+        """
         if self._closed:
             return
 
         if not self._proc.is_alive():
             self._closed = True
-            return            # already closed
+            return
 
-        # (1) polite SIGTERM (handled inside worker — see patch above)
         self._proc.terminate()
         self._proc.join(timeout=2.0)
 
-        # (2) if still stubborn, kill hard
         if self._proc.is_alive():
             self._proc.kill()
             self._proc.join(timeout=1.0)
 
-        # (3) now we are the *only* process mapped → safe to unlink
         for ring in self._rings.values():
             ring.close()
             ring.unlink()

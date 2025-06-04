@@ -39,7 +39,6 @@ class ScalarPlot(QWidget):
         self._history     = history
         self._max_curves  = max_curves
 
-        # --------- Qt widget layout ------------------------------------ #
         layout      = QVBoxLayout(self)
         self._plot  = pg.PlotWidget()
         self._plot.setClipToView(True)
@@ -47,7 +46,6 @@ class ScalarPlot(QWidget):
         self._plot.addLegend(offset=(10, 10))
         layout.addWidget(self._plot)
 
-        # --------- internal state -------------------------------------- #
         self._curves: Dict[str, pg.PlotDataItem] = {}
         self._buffers: Dict[str, deque[Tuple[float, float]]] = {}
 
@@ -59,18 +57,10 @@ class ScalarPlot(QWidget):
         ]
         self._color_index = 0
 
-    # ------------------------------------------------------------------ #
-    #  Internal helpers
-    # ------------------------------------------------------------------ #
-
     def _next_color(self) -> str:
         color = self._palette[self._color_index % len(self._palette)]
         self._color_index += 1
         return color
-
-    # ------------------------------------------------------------------ #
-    #  Public API
-    # ------------------------------------------------------------------ #
 
     def update_data(self, t: float, scalars: Dict[str, float]) -> None:
         """
@@ -90,7 +80,6 @@ class ScalarPlot(QWidget):
 
             self._buffers[name].append((t, value))
 
-        # redraw all curves
         for name, buf in self._buffers.items():
             ts, vs = zip(*buf)
             self._curves[name].setData(ts, vs)

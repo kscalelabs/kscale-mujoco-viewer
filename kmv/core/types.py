@@ -12,10 +12,6 @@ from typing import Literal, Mapping, Tuple, Optional
 import numpy as np
 
 
-# -----------------------------------------------------------------------------#
-# 1.  Physics snapshot – travels through shared memory
-# -----------------------------------------------------------------------------#
-
 @dataclass(frozen=True, slots=True)
 class Frame:
     """
@@ -33,16 +29,8 @@ class Frame:
     xfrc_applied: np.ndarray | None = None
 
 
-# -----------------------------------------------------------------------------#
-# 2.  Scalar streams – reward, loss, etc.
-# -----------------------------------------------------------------------------#
+Scalars = Mapping[str, float]
 
-Scalars = Mapping[str, float]          # alias for duck-typed dict-like objects
-
-
-# -----------------------------------------------------------------------------#
-# 3.  Message types for IPC communication
-# -----------------------------------------------------------------------------#
 
 @dataclass
 class Msg:
@@ -66,32 +54,21 @@ class PlotPacket(Msg):
     scalars: Mapping[str, float]
 
 
-# -----------------------------------------------------------------------------#
-# 4.  Public literals
-# -----------------------------------------------------------------------------#
+RenderMode = Literal["window", "offscreen"]
 
-RenderMode = Literal["window", "offscreen"]  # kept for backwards compatibility
-
-
-# -----------------------------------------------------------------------------#
-# 5.  Viewer configuration (new)
-# -----------------------------------------------------------------------------#
 
 @dataclass(frozen=True, slots=True)
 class ViewerConfig:
-    # window & widgets
     width: int  = 900
     height: int = 550
     enable_plots: bool = True
 
-    # MuJoCo visual flags
     shadow: bool        = False
     reflection: bool    = False
     contact_force: bool = False
     contact_point: bool = False
     inertia: bool       = False
 
-    # camera (all optional ⇒ keep current free camera)
     camera_distance : Optional[float]                = None
     camera_azimuth  : Optional[float]                = None
     camera_elevation: Optional[float]                = None

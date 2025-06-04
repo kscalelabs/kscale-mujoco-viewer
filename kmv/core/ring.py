@@ -1,4 +1,3 @@
-# kmv/core/ring.py
 """
 Generic single-producer / single-consumer ring utilities.
 
@@ -22,9 +21,6 @@ from typing import (
 T = TypeVar("T")
 
 
-# --------------------------------------------------------------------------- #
-# 1.  Protocol
-# --------------------------------------------------------------------------- #
 @runtime_checkable
 class Ring(Protocol[T]):
     """Minimal API any ring must expose."""
@@ -41,9 +37,6 @@ class Ring(Protocol[T]):
     def pop_count(self) -> int: ...
 
 
-# --------------------------------------------------------------------------- #
-# 2.  Pure-Python implementation (formerly RingBuffer)
-# --------------------------------------------------------------------------- #
 class InProcessRing(Generic[T]):
     """
     Lock-light deque ring for threads within a single process.
@@ -60,7 +53,6 @@ class InProcessRing(Generic[T]):
         self._push_ctr = 0
         self._pop_ctr = 0
 
-    # --- Ring interface -------------------------------------------------- #
     def push(self, item: T) -> None:
         with self._lock:
             self._buf.append(item)
@@ -73,7 +65,6 @@ class InProcessRing(Generic[T]):
             self._pop_ctr += 1
             return self._buf[-1]
 
-    # --- diagnostics ----------------------------------------------------- #
     def __len__(self) -> int:
         with self._lock:
             return len(self._buf)
