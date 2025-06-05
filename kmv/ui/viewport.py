@@ -202,8 +202,8 @@ class GLViewport(QOpenGLWidget):
 
         # Camera controls
         if self._mouse_btn == Qt.MouseButton.LeftButton:
-            self.cam.azimuth += 0.25 * dx
-            self.cam.elevation += 0.25 * dy
+            self.cam.azimuth -= 0.25 * dx
+            self.cam.elevation -= 0.25 * dy
             self.cam.elevation = np.clip(self.cam.elevation, -89.9, 89.9)
         elif self._mouse_btn == Qt.MouseButton.RightButton:
             scale = 0.002 * self.cam.distance
