@@ -89,7 +89,7 @@ class QtViewer:
         self._rings = _build_shm_rings(mj_model)
         shm_cfg = {name: {"name": ring.name, "shape": ring.shape} for name, ring in self._rings.items()}
         self._ctrl = ControlPipe()
-        ctx = mp.get_context("spawn")
+        ctx = mp.get_context()
         self._table_q = make_metrics_queue()
         self._plot_q = make_metrics_queue()
         self._push_ctr = 0
