@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 from kmv.core.controller import RenderLoop
 from kmv.core.types import PlotPacket, TelemetryPacket, ViewerConfig
 from kmv.ipc.shared_ring import SharedMemoryRing
+from kmv.ui.help import HelpWidget
 from kmv.ui.plot import ScalarPlot
 from kmv.ui.table import ViewerStatsTable
 from kmv.ui.viewport import GLViewport
@@ -95,6 +96,7 @@ class ViewerWindow(QMainWindow):
         menubar.setNativeMenuBar(False)
         self._plots_menu = menubar.addMenu("&Plots")
         self._telemetry_menu = menubar.addMenu("&Viewer Stats")
+        self._help_menu = menubar.addMenu("&Help")
 
         # Viewer stats table
         self._viewer_stats_table = ViewerStatsTable(self)
@@ -107,6 +109,18 @@ class ViewerWindow(QMainWindow):
         telem_action.toggled.connect(table_dock.setVisible)
         table_dock.visibilityChanged.connect(telem_action.setChecked)
         self._telemetry_menu.addAction(telem_action)
+
+        # Help widget
+        self._help_widget = HelpWidget(self)
+        help_dock = QDockWidget("Help", self)
+        help_dock.setWidget(self._help_widget)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, help_dock)
+        help_dock.hide()
+
+        help_action = QAction("Show help", self, checkable=True)
+        help_action.toggled.connect(help_dock.setVisible)
+        help_dock.visibilityChanged.connect(help_action.setChecked)
+        self._help_menu.addAction(help_action)
 
         # Plots
         self._plots: dict[str, ScalarPlot] = {}
