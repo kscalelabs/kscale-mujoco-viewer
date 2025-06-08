@@ -117,10 +117,19 @@ class ViewerWindow(QMainWindow):
             self._viewport.opt.flags[flag] = state
             self._viewport.update()
 
+        def _set_opt_attr(attr: str, value: int) -> None:
+            setattr(self._viewport.opt, attr, value)
+            self._viewport.update()
+
         settings_widget = SettingsWidget(
             get_set_flag=_set_vis_flag,
+            set_opt_attr=_set_opt_attr,
             force_init=cfg.contact_force,
             point_init=cfg.contact_point,
+            inertia_init=cfg.inertia,
+            joint_init=False,
+            label_init=self._viewport.opt.label,
+            frame_init=self._viewport.opt.frame,
             parent=self,
         )
         settings_dock = QDockWidget("Settings", self)

@@ -59,11 +59,19 @@ class HelpWidget(QWidget):
         </ul>
 
         <h3>🔧 Settings Panel</h3>
-        <p>The Settings dock lets you toggle visual overlays on the fly:</p>
+        <p>The Settings dock lets you toggle visual overlays and controls on the fly:</p>
         <ul>
-            <li><b>Show contact forces:</b> Draw coloured arrows indicating contact
+            <li><b>Contact Forces:</b> Draw coloured arrows indicating contact
                 impulses between geoms.</li>
-            <li><b>Show contact points:</b> Mark each active contact with a small dot.</li>
+            <li><b>Contact Points:</b> Mark each active contact with a small dot.</li>
+            <li><b>Inertia Ellipsoids:</b> Visualize the inertial properties of bodies 
+                as 3D ellipsoids.</li>
+            <li><b>Joint Axes:</b> Display coordinate axes at joint locations 
+                showing joint orientation.</li>
+            <li><b>Object labels:</b> Choose which object names to display - None, 
+                Body names, Geom names, or Site names.</li>
+            <li><b>Spatial frames:</b> Select which coordinate frames to show - None, 
+                World frame, Body frames, Geom frames, or Site frames.</li>
         </ul>
 
         <h3>📈 Viewer Stats</h3>
