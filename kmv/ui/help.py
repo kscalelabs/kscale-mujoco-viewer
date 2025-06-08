@@ -64,13 +64,13 @@ class HelpWidget(QWidget):
             <li><b>Contact Forces:</b> Draw coloured arrows indicating contact
                 impulses between geoms.</li>
             <li><b>Contact Points:</b> Mark each active contact with a small dot.</li>
-            <li><b>Inertia Ellipsoids:</b> Visualize the inertial properties of bodies 
+            <li><b>Inertia Ellipsoids:</b> Visualize the inertial properties of bodies
                 as 3D ellipsoids.</li>
-            <li><b>Joint Axes:</b> Display coordinate axes at joint locations 
+            <li><b>Joint Axes:</b> Display coordinate axes at joint locations
                 showing joint orientation.</li>
-            <li><b>Object labels:</b> Choose which object names to display - None, 
+            <li><b>Object labels:</b> Choose which object names to display - None,
                 Body names, Geom names, or Site names.</li>
-            <li><b>Spatial frames:</b> Select which coordinate frames to show - None, 
+            <li><b>Spatial frames:</b> Select which coordinate frames to show - None,
                 World frame, Body frames, Geom frames, or Site frames.</li>
         </ul>
 
