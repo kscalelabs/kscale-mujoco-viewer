@@ -55,6 +55,23 @@ class HelpWidget(QWidget):
             <li><b>Plots:</b> Toggle different plot groups on/off</li>
             <li><b>Viewer Stats:</b> Show/hide viewer statistics table</li>
             <li><b>Help:</b> Display this help information</li>
+            <li><b>Settings:</b> Show/hide real-time visual settings</li>
+        </ul>
+
+        <h3>🔧 Settings Panel</h3>
+        <p>The Settings dock lets you toggle visual overlays and controls on the fly:</p>
+        <ul>
+            <li><b>Contact Forces:</b> Draw coloured arrows indicating contact
+                impulses between geoms.</li>
+            <li><b>Contact Points:</b> Mark each active contact with a small dot.</li>
+            <li><b>Inertia Ellipsoids:</b> Visualize the inertial properties of bodies
+                as 3D ellipsoids.</li>
+            <li><b>Joint Axes:</b> Display coordinate axes at joint locations
+                showing joint orientation.</li>
+            <li><b>Object labels:</b> Choose which object names to display - None,
+                Body names, Geom names, or Site names.</li>
+            <li><b>Spatial frames:</b> Select which coordinate frames to show - None,
+                World frame, Body frames, Geom frames, or Site frames.</li>
         </ul>
 
         <h3>📈 Viewer Stats</h3>
