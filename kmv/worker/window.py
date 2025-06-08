@@ -28,6 +28,7 @@ from kmv.core.types import PlotPacket, TelemetryPacket, ViewerConfig
 from kmv.ipc.shared_ring import SharedMemoryRing
 from kmv.ui.help import HelpWidget
 from kmv.ui.plot import ScalarPlot
+from kmv.ui.settings import SettingsWidget
 from kmv.ui.table import ViewerStatsTable
 from kmv.ui.viewport import GLViewport
 
@@ -96,6 +97,7 @@ class ViewerWindow(QMainWindow):
         menubar.setNativeMenuBar(False)
         self._plots_menu = menubar.addMenu("&Plots")
         self._telemetry_menu = menubar.addMenu("&Viewer Stats")
+        self._settings_menu = menubar.addMenu("&Settings")
         self._help_menu = menubar.addMenu("&Help")
 
         # Viewer stats table
@@ -109,6 +111,27 @@ class ViewerWindow(QMainWindow):
         telem_action.toggled.connect(table_dock.setVisible)
         table_dock.visibilityChanged.connect(telem_action.setChecked)
         self._telemetry_menu.addAction(telem_action)
+
+        # Settings panel
+        def _set_vis_flag(flag: int, state: bool) -> None:
+            self._viewport.opt.flags[flag] = state
+            self._viewport.update()
+
+        settings_widget = SettingsWidget(
+            get_set_flag=_set_vis_flag,
+            force_init=cfg.contact_force,
+            point_init=cfg.contact_point,
+            parent=self,
+        )
+        settings_dock = QDockWidget("Settings", self)
+        settings_dock.setWidget(settings_widget)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, settings_dock)
+        settings_dock.hide()
+
+        settings_action = QAction("Show settings", self, checkable=True)
+        settings_action.toggled.connect(settings_dock.setVisible)
+        settings_dock.visibilityChanged.connect(settings_action.setChecked)
+        self._settings_menu.addAction(settings_action)
 
         # Help widget
         self._help_widget = HelpWidget(self)

@@ -55,6 +55,15 @@ class HelpWidget(QWidget):
             <li><b>Plots:</b> Toggle different plot groups on/off</li>
             <li><b>Viewer Stats:</b> Show/hide viewer statistics table</li>
             <li><b>Help:</b> Display this help information</li>
+            <li><b>Settings:</b> Show/hide real-time visual settings</li>
+        </ul>
+
+        <h3>🔧 Settings Panel</h3>
+        <p>The Settings dock lets you toggle visual overlays on the fly:</p>
+        <ul>
+            <li><b>Show contact forces:</b> Draw coloured arrows indicating contact
+                impulses between geoms.</li>
+            <li><b>Show contact points:</b> Mark each active contact with a small dot.</li>
         </ul>
 
         <h3>📈 Viewer Stats</h3>
