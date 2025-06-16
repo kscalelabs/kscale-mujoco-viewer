@@ -50,6 +50,15 @@ while viewer.is_open:
 viewer.close()
 ```
 
+# Troubleshooting
+
+If you have issues with linux machines that have both integrated and nvidia GPUs, you may need to set these environment variables to force use of the nvidia GPU.
+
+```bash
+__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia python examples/default_humanoid.py
+```
+
+
 # Acknowledgements
 
 Originally referenced from [mujoco-python-viewer](https://github.com/gaolongsen/mujoco-python-viewer).
