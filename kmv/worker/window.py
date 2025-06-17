@@ -214,7 +214,7 @@ class ViewerWindow(QMainWindow):
         parent: QMenu = self._plots_menu  # "Plots" menu is the root
         sofar = ""
 
-        # walk all but the last component, creating sub-menus as needed
+        # Walk all but the last component, creating sub-menus as needed
         for comp in parts[:-1]:
             sofar = f"{sofar}/{comp}" if sofar else comp
             if sofar not in self._plot_submenus:
@@ -229,7 +229,7 @@ class ViewerWindow(QMainWindow):
         if group in self._plots:
             return self._plots[group]
 
-        # get the parent menu and the leaf name
+        # Get the parent menu and the leaf name
         parent_menu, leaf_name = self._menu_for_path(group)
 
         # Graphics widget
