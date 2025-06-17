@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QLabel,
     QMainWindow,
+    QMenu,
     QStatusBar,
     QWidget,
 )
@@ -96,6 +97,7 @@ class ViewerWindow(QMainWindow):
         menubar = self.menuBar()
         menubar.setNativeMenuBar(False)
         self._plots_menu = menubar.addMenu("&Plots")
+        self._plot_submenus: dict[str, QMenu] = {}
         self._telemetry_menu = menubar.addMenu("&Viewer Stats")
         self._settings_menu = menubar.addMenu("&Settings")
         self._help_menu = menubar.addMenu("&Help")
@@ -206,26 +208,45 @@ class ViewerWindow(QMainWindow):
             get_plot=get_plot_packet,
         )
 
+    def _menu_for_path(self, path: str) -> tuple[QMenu, str]:
+        """Return (parent_menu, leaf_name) for a slash-separated group path."""
+        parts = path.split("/")
+        parent: QMenu = self._plots_menu  # "Plots" menu is the root
+        sofar = ""
+
+        # walk all but the last component, creating sub-menus as needed
+        for comp in parts[:-1]:
+            sofar = f"{sofar}/{comp}" if sofar else comp
+            if sofar not in self._plot_submenus:
+                submenu = parent.addMenu(comp.capitalize())
+                self._plot_submenus[sofar] = submenu
+            parent = self._plot_submenus[sofar]
+
+        return parent, parts[-1]
+
     def _plot_for_group(self, group: str) -> ScalarPlot:
         """Return (or lazily create) the plot dock for *group*."""
         if group in self._plots:
             return self._plots[group]
 
+        # get the parent menu and the leaf name
+        parent_menu, leaf_name = self._menu_for_path(group)
+
         # Graphics widget
         plot = ScalarPlot(history=600, max_curves=32)
-        dock = QDockWidget(group.capitalize(), self)
+        dock = QDockWidget(leaf_name.capitalize(), self)
         dock.setWidget(plot)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
         dock.hide()
 
         # Menu action
-        action = QAction(group.capitalize(), self, checkable=True)
+        action = QAction(leaf_name.capitalize(), self, checkable=True)
         action.setChecked(False)
         # Bidirectional sync (menu to dock)
         action.toggled.connect(dock.setVisible)
         # …and (dock to menu) in case user closes the dock title-bar "X"
         dock.visibilityChanged.connect(action.setChecked)
-        self._plots_menu.addAction(action)
+        parent_menu.addAction(action)
 
         # Bookkeeping
         self._plots[group] = plot
