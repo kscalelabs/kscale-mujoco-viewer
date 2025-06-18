@@ -25,6 +25,7 @@ class SettingsWidget(QWidget):
         joint_init: bool,
         label_init: int,
         frame_init: int,
+        transparent_init: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -48,11 +49,16 @@ class SettingsWidget(QWidget):
         self._chk_joint.setChecked(joint_init)
         self._chk_joint.toggled.connect(lambda b: self._set_flag(mujoco.mjtVisFlag.mjVIS_JOINT, b))
 
+        self._chk_transp = QCheckBox("Transparent geoms")
+        self._chk_transp.setChecked(transparent_init)
+        self._chk_transp.toggled.connect(lambda b: self._set_flag(mujoco.mjtVisFlag.mjVIS_TRANSPARENT, b))
+
         lay = QFormLayout(self)
         lay.addRow(self._chk_force)
         lay.addRow(self._chk_point)
         lay.addRow(self._chk_inertia)
         lay.addRow(self._chk_joint)
+        lay.addRow(self._chk_transp)
 
         # Object-label drop-down
         lbl_box = QComboBox()

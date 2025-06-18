@@ -132,6 +132,7 @@ class ViewerWindow(QMainWindow):
             joint_init=False,
             label_init=self._viewport.opt.label,
             frame_init=self._viewport.opt.frame,
+            transparent_init=False,
             parent=self,
         )
         settings_dock = QDockWidget("Settings", self)
