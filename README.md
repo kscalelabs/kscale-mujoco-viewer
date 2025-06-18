@@ -58,6 +58,15 @@ If you have issues with linux machines that have both integrated and nvidia GPUs
 __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia python examples/default_humanoid.py
 ```
 
+You may also have to install the following utilities:
+```bash
+sudo apt install libxcb-cursor0 libxcb-cursor-dev
+```
+
+Additionally, depending on your setup, you may need to set the right environment variables to run the viewer properly. See [this issue](https://github.com/kscalelabs/ksim/issues/431#issuecomment-2982603066) for more details.
+```bash
+QT_QPA_PLATFORM=wayland python examples/default_humanoid.py
+```
 
 # Acknowledgements
 
