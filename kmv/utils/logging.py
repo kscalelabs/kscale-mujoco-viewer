@@ -23,7 +23,7 @@ class VideoWriter:
             )
 
         try:
-            import imageio.v2 as imageio
+            import imageio.v2 as imageio  # noqa: PLC0415
         except ImportError as exc:
             raise RuntimeError(
                 "Failed to initialize video writer – saving .mp4 videos with "
@@ -67,7 +67,7 @@ def save_video(frames: list[np.ndarray], save_path: str | Path, fps: int = 30) -
     match path.suffix.lower():
         case ".mp4":
             try:
-                import imageio.v2 as imageio
+                import imageio.v2 as imageio  # noqa: PLC0415
             except ImportError:
                 raise RuntimeError(
                     "Failed to save video - note that saving .mp4 videos with imageio usually "

@@ -61,7 +61,7 @@ class GLViewport(QOpenGLWidget):
         self._on_forces = on_forces
 
         # mouse state
-        from PySide6.QtCore import Qt as _QtAlias  # local alias to avoid long lines
+        from PySide6.QtCore import Qt as _QtAlias  # noqa: PLC0415
 
         self._mouse_btn: _QtAlias.MouseButton | None = None
         self._last_x = 0.0
