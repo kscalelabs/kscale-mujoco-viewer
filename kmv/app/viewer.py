@@ -63,6 +63,7 @@ class QtViewer:
         camera_elevation: float | None = None,
         camera_lookat: tuple[float, float, float] | None = None,
         track_body_id: int | None = None,
+        timeout_secs: float | None = None,
     ) -> None:
         if mode not in ("window", "offscreen"):
             raise ValueError(f"unknown render mode {mode!r}")
@@ -120,8 +121,8 @@ class QtViewer:
                         break
                     case "shutdown":
                         raise RuntimeError("Viewer process terminated during start-up")
-            if (time.perf_counter() - _t0) > 5.0:
-                raise TimeoutError("Viewer did not initialise within 5 s")
+            if (time.perf_counter() - _t0) > (timeout_secs or 5.0):
+                raise TimeoutError(f"Viewer did not initialise within {(timeout_secs or 5.0)} s")
             time.sleep(0.01)
 
     @property
