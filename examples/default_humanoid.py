@@ -12,6 +12,7 @@ import colorlogging
 import mujoco
 
 from kmv.app.viewer import QtViewer
+from kmv.core.markers import SphereMarker
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ def run_default_humanoid() -> None:
     data = mujoco.MjData(model)
 
     viewer = QtViewer(model)
+    viewer.push_markers(SphereMarker(pos=(0, 0, 0), radius=0.05))
     logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C or close window to quit.")
 
     sim_it_counter = 0

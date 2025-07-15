@@ -37,12 +37,14 @@ class RenderLoop:
         on_forces: _OnForces | None = None,
         get_table: Callable[[], TelemetryPacket | None],
         get_plot: Callable[[], PlotPacket | None],
+        get_markers: Callable[[], tuple | None],
     ) -> None:
         self._model, self._data = model, data
         self._rings = rings
         self._on_forces = on_forces
         self._get_table = get_table
         self._get_plot = get_plot
+        self._get_markers = get_markers
 
         self._fps_timer = time.perf_counter()
         self._frame_ctr = 0
@@ -67,10 +69,13 @@ class RenderLoop:
         self._last_table: dict[str, float] = {}
         self._plots_latest: dict[str, _Scalars] = {}
 
+        self._markers: tuple = ()
+
     def tick(self) -> None:
         """Advance state and update `mjData` in-place."""
         self._pull_state()
         self._drain_metrics()
+        self._drain_markers()
         self._account_timing()
 
     def _pull_state(self) -> None:
@@ -109,6 +114,11 @@ class RenderLoop:
         while (pkt_plot := self._get_plot()) is not None:
             self._plots_latest[pkt_plot.group] = pkt_plot.scalars
             self._plot_ctr += 1
+
+    def _drain_markers(self) -> None:
+        while (msg := self._get_markers()) is not None:
+            if isinstance(msg, tuple):
+                self._markers = msg
 
     def _account_timing(self) -> None:
         """Account for timing metrics."""

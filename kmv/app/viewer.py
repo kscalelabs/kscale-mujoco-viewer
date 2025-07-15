@@ -15,6 +15,7 @@ import mujoco
 import numpy as np
 
 from kmv.core import streams
+from kmv.core.markers import SphereMarker
 from kmv.core.types import RenderMode, ViewerConfig
 from kmv.ipc.control import ControlPipe, make_metrics_queue
 from kmv.ipc.shared_ring import SharedMemoryRing
@@ -93,6 +94,7 @@ class QtViewer:
         ctx = mp.get_context()
         self._table_q = make_metrics_queue()
         self._plot_q = make_metrics_queue()
+        self._marker_q = make_metrics_queue()
         self._push_ctr = 0
         self._closed = False
 
@@ -105,6 +107,7 @@ class QtViewer:
                 self._ctrl.sender(),
                 self._table_q,
                 self._plot_q,
+                self._marker_q,
                 config,
             ),
             daemon=True,
@@ -162,6 +165,10 @@ class QtViewer:
         if self._closed:
             return
         self._plot_q.put({"group": group, "scalars": dict(scalars)})
+
+    def push_markers(self, *markers: SphereMarker) -> None:
+        if not self._closed and markers:
+            self._marker_q.put(markers)
 
     def drain_control_pipe(self) -> np.ndarray | None:
         """Return the latest push forces array.

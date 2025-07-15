@@ -60,6 +60,8 @@ class GLViewport(QOpenGLWidget):
         # forces callback
         self._on_forces = on_forces
 
+        self._markers: tuple = ()
+
         # mouse state
         from PySide6.QtCore import Qt as _QtAlias  # noqa: PLC0415
 
@@ -101,10 +103,28 @@ class GLViewport(QOpenGLWidget):
             self.scene,
         )
 
+        for m in self._markers:
+            if self.scene.ngeom >= self.scene.maxgeom:
+                break
+            slot = self.scene.geoms[self.scene.ngeom]
+            mujoco.mjv_initGeom(
+                slot,
+                mujoco.mjtGeom.mjGEOM_SPHERE,
+                np.array([m.radius, 0, 0]),
+                np.asarray(m.pos, dtype=np.float64),
+                np.eye(3).flatten(),
+                np.asarray(m.rgba, dtype=np.float32),
+            )
+            self.scene.ngeom += 1
+
         if self._callback:
             self._callback(self.model, self._data, self.scene)
 
         mujoco.mjr_render(rect, self.scene, self._ctx)
+
+    def set_markers(self, markers: tuple) -> None:
+        """Set the markers to be rendered in the viewport."""
+        self._markers = markers
 
     def mousePressEvent(self, ev: QMouseEvent) -> None:  # noqa: N802
         """Start drag or body-perturb interaction (Ctrl-click)."""
