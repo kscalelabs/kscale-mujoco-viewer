@@ -38,6 +38,7 @@ class _TrailState:
     max_len: int | None
     radius: float
     rgba: tuple[float, float, float, float]
+    min_segment_dist: float
     pts: deque[np.ndarray]  # all vertices (max_len + 1)
     seg_ids: deque[str]  # IDs of capsule markers
     next_seg: int = 0  # running counter
@@ -148,14 +149,21 @@ class RenderLoop:
                 max_len=cmd.max_len,
                 radius=cmd.radius,
                 rgba=cmd.rgba,
+                min_segment_dist=cmd.min_segment_dist,
                 pts=deque(maxlen=(cmd.max_len or 0) + 1),
                 seg_ids=deque(maxlen=(cmd.max_len or 0)),
             )
 
         def _push_point(cmd: PushTrailPoint, st: _TrailState) -> None:
-            st.pts.append(np.asarray(cmd.point, dtype=np.float64))
+            pt = np.asarray(cmd.point, dtype=np.float64)
 
-            if len(st.pts) < 2:  # need ≥2 points for a segment
+            # discard if we already have a point and this one is too close
+            if st.pts and np.linalg.norm(pt - st.pts[-1]) < st.min_segment_dist:
+                return
+
+            st.pts.append(pt)
+
+            if len(st.pts) < 2:
                 return
 
             p0, p1 = st.pts[-2], st.pts[-1]

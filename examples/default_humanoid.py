@@ -36,9 +36,9 @@ def run_default_humanoid() -> None:
         Marker(
             id="torso_arrow",
             body_id=body_id,
-            local_offset=(0, 0, 0.2),
+            local_offset=(0, 0, 0.35),
             geom_type=GeomType.ARROW,
-            size=(0.02, 0.20, 0.02),
+            size=(0.02, 0.020, 0.2),
             rgba=(0, 1, 0, 1),
         )
     )
@@ -47,7 +47,7 @@ def run_default_humanoid() -> None:
         Marker(id="red_sphere", pos=(0, 0, 0), geom_type=GeomType.SPHERE, size=(0.05, 0.05, 0.05), rgba=(1, 0, 0, 1))
     )
 
-    viewer.add_trail("torso_path", max_len=1000, radius=0.012)
+    viewer.add_trail("torso_path", max_len=100, radius=0.012, min_segment_dist=0.05)
 
     logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C or close window to quit.")
 

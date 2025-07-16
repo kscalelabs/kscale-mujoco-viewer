@@ -200,10 +200,13 @@ class QtViewer:
         max_len: int | None = 150,
         radius: float = 0.01,
         rgba: tuple[float, float, float, float] = (0.1, 0.6, 1.0, 0.9),
+        min_segment_dist: float = 1e-3,
     ) -> None:
         """Create a new trail (does nothing if ID already exists)."""
         if not self._closed:
-            self._marker_q.put(AddTrail(id=trail_id, max_len=max_len, radius=radius, rgba=rgba))
+            self._marker_q.put(
+                AddTrail(id=trail_id, max_len=max_len, radius=radius, rgba=rgba, min_segment_dist=min_segment_dist)
+            )
 
     def push_trail_point(self, trail_id: str | int, point: tuple[float, float, float]) -> None:
         """Append one XYZ vertex to an existing trail."""

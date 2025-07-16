@@ -177,6 +177,7 @@ class AddTrail(_TrailCmd):
     radius: float = 0.01
     rgba: RGBA = (0.1, 0.6, 1.0, 0.9)  # default light-blue
     track_body: int | None = None  # if set, emit point every frame
+    min_segment_dist: float = 1e-3  # don't add a segment unless ≥ this distance
     op: Literal["trail_add"] = "trail_add"
 
 
