@@ -60,7 +60,7 @@ class GLViewport(QOpenGLWidget):
         # forces callback
         self._on_forces = on_forces
 
-        self._markers: tuple = ()
+        self._markers: tuple[object, ...] = ()
 
         # mouse state
         from PySide6.QtCore import Qt as _QtAlias  # noqa: PLC0415
@@ -122,7 +122,7 @@ class GLViewport(QOpenGLWidget):
 
         mujoco.mjr_render(rect, self.scene, self._ctx)
 
-    def set_markers(self, markers: tuple) -> None:
+    def set_markers(self, markers: tuple[object, ...]) -> None:
         """Set the markers to be rendered in the viewport."""
         self._markers = markers
 

@@ -37,7 +37,7 @@ class RenderLoop:
         on_forces: _OnForces | None = None,
         get_table: Callable[[], TelemetryPacket | None],
         get_plot: Callable[[], PlotPacket | None],
-        get_markers: Callable[[], tuple | None],
+        get_markers: Callable[[], tuple[object, ...] | None],
     ) -> None:
         self._model, self._data = model, data
         self._rings = rings
@@ -69,7 +69,7 @@ class RenderLoop:
         self._last_table: dict[str, float] = {}
         self._plots_latest: dict[str, _Scalars] = {}
 
-        self._markers: tuple = ()
+        self._markers: tuple[object, ...] = ()
 
     def tick(self) -> None:
         """Advance state and update `mjData` in-place."""
