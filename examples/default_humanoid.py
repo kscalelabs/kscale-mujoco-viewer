@@ -10,19 +10,15 @@ from pathlib import Path
 
 import colorlogging
 import mujoco
-import numpy as np
-from collections import deque
 
 from kmv.app.viewer import QtViewer
 from kmv.core.types import GeomType, Marker
 
-from kmv.utils.geometry import capsule_between
-
 logger = logging.getLogger(__name__)
 
 PHYSICS_DT = 0.02
-TRAIL_LEN = 150          # max # of capsule segments to keep
-STEP_SKIP = 3            # decimate updates (every N sim steps)
+TRAIL_LEN = 150  # max # of capsule segments to keep
+STEP_SKIP = 3  # decimate updates (every N sim steps)
 
 
 def run_default_humanoid() -> None:
@@ -34,13 +30,6 @@ def run_default_humanoid() -> None:
     data = mujoco.MjData(model)
 
     viewer = QtViewer(model)
-
-    # ------------------------------------------------------------------
-    #  Trail bookkeeping
-    # ------------------------------------------------------------------
-    trail_pts: deque[np.ndarray] = deque(maxlen=TRAIL_LEN + 1)  # vertices
-    trail_ids: deque[str] = deque(maxlen=TRAIL_LEN)             # marker IDs
-    next_seg = 0
 
     body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "torso")
     viewer.add_marker(
@@ -57,6 +46,8 @@ def run_default_humanoid() -> None:
     viewer.add_marker(
         Marker(id="red_sphere", pos=(0, 0, 0), geom_type=GeomType.SPHERE, size=(0.05, 0.05, 0.05), rgba=(1, 0, 0, 1))
     )
+
+    viewer.add_trail("torso_path", max_len=1000, radius=0.012)
 
     logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C or close window to quit.")
 
@@ -91,26 +82,9 @@ def run_default_humanoid() -> None:
                 },
             )
 
-            # ----------------------------------------------------------
-            #  Live torso trail (capsule segments)
-            # ----------------------------------------------------------
             torso_xyz = data.xpos[body_id].copy()
-            if sim_it_counter % STEP_SKIP == 0:
-                trail_pts.append(torso_xyz)
 
-                if len(trail_pts) >= 2:
-                    p0, p1 = trail_pts[-2], trail_pts[-1]
-                    seg_id = f"trail_{next_seg}"
-                    next_seg += 1
-                    seg_id = f"trail_{next_seg}";  next_seg += 1
-                    viewer.add_marker(
-                        capsule_between(p0, p1, radius=0.01, seg_id=seg_id)
-                    )
-                    trail_ids.append(seg_id)
-
-                # Keep the list bounded
-                if len(trail_ids) == TRAIL_LEN:
-                    viewer.remove_marker(trail_ids.popleft())
+            viewer.push_trail_point("torso_path", tuple(torso_xyz))
 
             if sim_it_counter % 100 == 0:
                 viewer.update_marker("torso_arrow", rgba=(1, 0, 0, 1))

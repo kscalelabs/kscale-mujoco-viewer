@@ -100,9 +100,15 @@ class Marker:
     local_offset: Tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     orient: Tuple[float, ...] = (
-        1.0, 0.0, 0.0,
-        0.0, 1.0, 0.0,
-        0.0, 0.0, 1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     )
 
     def clone_with(self, **kwargs: object) -> "Marker":
@@ -154,6 +160,39 @@ class RemoveMarker(_MarkerCmd):
 
 
 RenderMode = Literal["window", "offscreen"]
+
+
+@dataclass(frozen=True, slots=True)
+class _TrailCmd(Msg):
+    """Base class for all trail commands."""
+
+    id: str | int
+
+
+@dataclass(frozen=True, slots=True)
+class AddTrail(_TrailCmd):
+    """Create a brand-new trail with drawing parameters."""
+
+    max_len: int | None = 150  # None → unlimited length
+    radius: float = 0.01
+    rgba: RGBA = (0.1, 0.6, 1.0, 0.9)  # default light-blue
+    track_body: int | None = None  # if set, emit point every frame
+    op: Literal["trail_add"] = "trail_add"
+
+
+@dataclass(frozen=True, slots=True)
+class PushTrailPoint(_TrailCmd):
+    """Append a single XYZ point to an existing trail."""
+
+    point: Tuple[float, float, float]
+    op: Literal["trail_push"] = "trail_push"
+
+
+@dataclass(frozen=True, slots=True)
+class RemoveTrail(_TrailCmd):
+    """Delete the trail and all of its segments."""
+
+    op: Literal["trail_remove"] = "trail_remove"
 
 
 @dataclass(frozen=True, slots=True)

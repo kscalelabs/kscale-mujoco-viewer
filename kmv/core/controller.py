@@ -6,17 +6,38 @@ set of timing / telemetry values that the Qt widgets display.
 """
 
 import time
+from collections import deque
+from dataclasses import dataclass
 from typing import Callable, Mapping
 
 import mujoco
 import numpy as np
 
-from kmv.core.types import Marker, PlotPacket, TelemetryPacket
+from kmv.core.types import (
+    AddTrail,
+    Marker,
+    PlotPacket,
+    PushTrailPoint,
+    RemoveTrail,
+    TelemetryPacket,
+    _MarkerCmd,
+)
 from kmv.ipc.shared_ring import SharedMemoryRing
+from kmv.utils.geometry import capsule_between
 
 _Array = np.ndarray
 _Scalars = Mapping[str, float]
 _OnForces = Callable[[_Array], None]
+
+
+@dataclass
+class _TrailState:
+    max_len: int | None
+    radius: float
+    rgba: tuple[float, float, float, float]
+    pts: deque[np.ndarray]  # all vertices (max_len + 1)
+    seg_ids: deque[str]  # IDs of capsule markers
+    next_seg: int = 0  # running counter
 
 
 class RenderLoop:
@@ -70,6 +91,7 @@ class RenderLoop:
         self._plots_latest: dict[str, _Scalars] = {}
 
         self._markers: dict[str | int, Marker] = {}
+        self._trails: dict[str | int, _TrailState] = {}
 
     def tick(self) -> None:
         """Advance state and update `mjData` in-place."""
@@ -116,9 +138,56 @@ class RenderLoop:
             self._plot_ctr += 1
 
     def _drain_markers(self) -> None:
+        """Handle marker *and* trail commands arriving over the queue."""
         while (cmd := self._get_markers()) is not None:
-            # Command objects know how to mutate the registry
-            cmd.apply(self._markers)
+            # ----- ordinary markers -------------------------------------------------
+            if isinstance(cmd, _MarkerCmd):
+                cmd.apply(self._markers)
+                continue
+
+            # ----- trails -----------------------------------------------------------
+            # 1) new trail
+            if isinstance(cmd, AddTrail):
+                self._trails[cmd.id] = _TrailState(
+                    max_len=cmd.max_len,
+                    radius=cmd.radius,
+                    rgba=cmd.rgba,
+                    pts=deque(maxlen=(cmd.max_len or 0) + 1),
+                    seg_ids=deque(maxlen=(cmd.max_len or 0)),
+                )
+                continue
+
+            # 2) push point
+            if isinstance(cmd, PushTrailPoint):
+                st = self._trails.get(cmd.id)
+                if st is None:
+                    continue  # silently ignore unknown trail
+                pt = np.asarray(cmd.point, dtype=np.float64)
+                st.pts.append(pt)
+
+                # need ≥2 points to make a segment
+                if len(st.pts) >= 2:
+                    p0, p1 = st.pts[-2], st.pts[-1]
+                    seg_id = f"{cmd.id}_{st.next_seg}"
+                    st.next_seg += 1
+
+                    self._markers[seg_id] = capsule_between(p0, p1, radius=st.radius, seg_id=seg_id, rgba=st.rgba)
+
+                    # cap trail length **before** we lose the ID
+                    if st.max_len is not None and len(st.seg_ids) >= st.max_len:
+                        old_seg = st.seg_ids.popleft()  # now we still have it
+                        self._markers.pop(old_seg, None)  # remove its Marker
+
+                    st.seg_ids.append(seg_id)
+                continue
+
+            # 3) remove trail
+            if isinstance(cmd, RemoveTrail):
+                st = self._trails.pop(cmd.id, None)
+                if st:
+                    for seg_id in st.seg_ids:
+                        self._markers.pop(seg_id, None)
+                continue
 
     def _account_timing(self) -> None:
         """Account for timing metrics."""

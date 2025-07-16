@@ -15,7 +15,17 @@ import mujoco
 import numpy as np
 
 from kmv.core import streams
-from kmv.core.types import AddMarker, Marker, RemoveMarker, RenderMode, UpdateMarker, ViewerConfig
+from kmv.core.types import (
+    AddMarker,
+    AddTrail,
+    Marker,
+    PushTrailPoint,
+    RemoveMarker,
+    RemoveTrail,  # ← new
+    RenderMode,
+    UpdateMarker,
+    ViewerConfig,
+)
 from kmv.ipc.control import ControlPipe, make_metrics_queue
 from kmv.ipc.shared_ring import SharedMemoryRing
 from kmv.worker.entrypoint import run_worker
@@ -182,6 +192,28 @@ class QtViewer:
         """Remove the marker with *id* from the viewer."""
         if not self._closed:
             self._marker_q.put(RemoveMarker(id=id))
+
+    def add_trail(
+        self,
+        trail_id: str | int,
+        *,
+        max_len: int | None = 150,
+        radius: float = 0.01,
+        rgba: tuple[float, float, float, float] = (0.1, 0.6, 1.0, 0.9),
+    ) -> None:
+        """Create a new trail (does nothing if ID already exists)."""
+        if not self._closed:
+            self._marker_q.put(AddTrail(id=trail_id, max_len=max_len, radius=radius, rgba=rgba))
+
+    def push_trail_point(self, trail_id: str | int, point: tuple[float, float, float]) -> None:
+        """Append one XYZ vertex to an existing trail."""
+        if not self._closed:
+            self._marker_q.put(PushTrailPoint(id=trail_id, point=point))
+
+    def remove_trail(self, trail_id: str | int) -> None:
+        """Completely remove a trail and all its segments."""
+        if not self._closed:
+            self._marker_q.put(RemoveTrail(id=trail_id))
 
     def drain_control_pipe(self) -> np.ndarray | None:
         """Return the latest push forces array.
