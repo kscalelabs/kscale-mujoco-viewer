@@ -200,7 +200,7 @@ class RenderLoop:
         trail_id: str | int,
         pt: np.ndarray,
         st: _TrailState,
-        *,                     # keyword-only flags
+        *,  # keyword-only flags
         check_distance: bool = True,
     ) -> None:
         """Add *pt* to trail *trail_id*, optionally enforcing `min_segment_dist`."""
@@ -218,9 +218,7 @@ class RenderLoop:
         seg_id = f"{trail_id}_{st.next_seg}"
         st.next_seg += 1
 
-        self._markers[seg_id] = capsule_between(
-            p0, p1, radius=st.radius, seg_id=seg_id, rgba=st.rgba
-        )
+        self._markers[seg_id] = capsule_between(p0, p1, radius=st.radius, seg_id=seg_id, rgba=st.rgba)
 
         # Ring-buffer enforcement
         if st.max_len is not None and len(st.seg_ids) >= st.max_len:

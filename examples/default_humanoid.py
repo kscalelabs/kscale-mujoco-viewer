@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 PHYSICS_DT = 0.02
 
+
 def run_default_humanoid() -> None:
     """Run the default humanoid simulation."""
     xml_path = Path(__file__).parent.parent / "tests" / "assets" / "humanoid.xml"
@@ -47,7 +48,7 @@ def run_default_humanoid() -> None:
 
     left_hand_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hand_left")
     viewer.add_trail("left_hand_path_manual", max_len=100, radius=0.012, min_segment_dist=0.01, rgba=(1, 0, 1, 1))
-    
+
     viewer.add_trail(
         "torso_path",
         track_body_id=torso_body_id,
