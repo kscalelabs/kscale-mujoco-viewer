@@ -69,7 +69,7 @@ class RenderLoop:
         self._last_table: dict[str, float] = {}
         self._plots_latest: dict[str, _Scalars] = {}
 
-        self._markers: tuple[object, ...] = ()
+        self._markers: dict[str | int, object] = {}
 
     def tick(self) -> None:
         """Advance state and update `mjData` in-place."""
@@ -116,9 +116,17 @@ class RenderLoop:
             self._plot_ctr += 1
 
     def _drain_markers(self) -> None:
-        while (msg := self._get_markers()) is not None:
-            if isinstance(msg, tuple):
-                self._markers = msg
+        while (cmd := self._get_markers()) is not None:
+            op = cmd.get("op")
+            mid = cmd.get("id")
+            if op == "add":
+                if mid not in self._markers:
+                    self._markers[mid] = cmd["payload"]
+            elif op == "update":
+                if mid in self._markers:
+                    self._markers[mid] = self._markers[mid].clone_with(**cmd["payload"])
+            elif op == "remove":
+                self._markers.pop(mid, None)
 
     def _account_timing(self) -> None:
         """Account for timing metrics."""

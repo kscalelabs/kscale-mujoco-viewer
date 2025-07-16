@@ -1,6 +1,6 @@
 """Draw various markers in the viewer."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum, auto
 from typing import Tuple
 
@@ -40,6 +40,8 @@ _MJ_MAP: dict[GeomType, mujoco.mjtGeom] = {
 class Marker:
     """Generic debug marker – choose any supported `GeomType`."""
 
+    id: str | int                       # ← unique handle set by caller
+
     pos: Tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     geom_type: GeomType = GeomType.SPHERE
@@ -49,3 +51,10 @@ class Marker:
     body_id: int | None = None
     geom_id: int | None = None
     local_offset: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+
+    # ----------------------------------------------------------
+    #  Utilities
+    # ----------------------------------------------------------
+    def clone_with(self, **kwargs) -> "Marker":
+        """Return a new Marker with *kwargs* overwritten."""
+        return replace(self, **kwargs)

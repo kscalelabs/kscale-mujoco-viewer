@@ -261,7 +261,7 @@ class ViewerWindow(QMainWindow):
         """Advance one GUI frame: pull state, update widgets, repaint."""
         self._rl.tick()
 
-        self._viewport.set_markers(self._rl._markers)
+        self._viewport.set_markers(tuple(self._rl._markers.values()))
 
         # Table
         self._viewer_stats_table.refresh(self._rl._last_table)

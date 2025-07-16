@@ -16,6 +16,11 @@ import numpy as np
 
 from kmv.core import streams
 from kmv.core.markers import Marker
+
+# ----------------------------------------------------------
+#  Marker ops sent over the marker_q:
+#  { "op": "add" | "update" | "remove", "id": id, "payload": Marker | dict }
+# ----------------------------------------------------------
 from kmv.core.types import RenderMode, ViewerConfig
 from kmv.ipc.control import ControlPipe, make_metrics_queue
 from kmv.ipc.shared_ring import SharedMemoryRing
@@ -166,9 +171,23 @@ class QtViewer:
             return
         self._plot_q.put({"group": group, "scalars": dict(scalars)})
 
-    def push_markers(self, *markers: Marker) -> None:
-        if not self._closed and markers:
-            self._marker_q.put(markers)
+    # ------------------------------------------------------------------ #
+    #  Marker management (ID-based)                                      #
+    # ------------------------------------------------------------------ #
+    def add_marker(self, marker: Marker) -> None:
+        """Register a brand-new marker (fails silently if ID exists)."""
+        if not self._closed:
+            self._marker_q.put({"op": "add", "id": marker.id, "payload": marker})
+
+    def update_marker(self, id: str | int, **fields) -> None:
+        """Modify an existing marker in place."""
+        if not self._closed:
+            self._marker_q.put({"op": "update", "id": id, "payload": fields})
+
+    def remove_marker(self, id: str | int) -> None:
+        """Remove the marker with *id* from the viewer."""
+        if not self._closed:
+            self._marker_q.put({"op": "remove", "id": id})
 
     def drain_control_pipe(self) -> np.ndarray | None:
         """Return the latest push forces array.

@@ -30,17 +30,18 @@ def run_default_humanoid() -> None:
     viewer = QtViewer(model)
 
     body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "torso")
-    viewer.push_markers(
+    viewer.add_marker(
         Marker(
-            body_id=body_id,  # <— follow “torso” body
-            local_offset=(0.0, 0.0, 0.2),  # 20 cm above COM
+            id="torso_arrow",
+            body_id=body_id,
+            local_offset=(0, 0, 0.2),
             geom_type=GeomType.ARROW,
-            size=(0.22, 0.20, 0.2),  # arrow radius / length
-            rgba=(0.0, 1.0, 0.0, 1.0),
+            size=(0.02, 0.20, 0.02),
+            rgba=(0, 1, 0, 1),
         )
     )
 
-    # viewer.push_markers(Marker(pos=(0, 0, 0), geom_type=GeomType.SPHERE, size=(0.05, 0.05, 0.05), rgba=(1, 0, 0, 1)))
+    viewer.add_marker(Marker(id="red_sphere", pos=(0, 0, 0), geom_type=GeomType.SPHERE, size=(0.05, 0.05, 0.05), rgba=(1, 0, 0, 1)))
 
     logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C or close window to quit.")
 
@@ -74,6 +75,10 @@ def run_default_humanoid() -> None:
                     "qvel2": float(data.qvel[2]),
                 },
             )
+            
+            if sim_it_counter % 100 == 0:
+                viewer.update_marker("torso_arrow", rgba=(1, 0, 0, 1))
+
 
             # Sleep so that sim-time == wall-time
             target_wall = t0_wall + (data.time + PHYSICS_DT)
