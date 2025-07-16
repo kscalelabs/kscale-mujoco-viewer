@@ -15,13 +15,7 @@ import mujoco
 import numpy as np
 
 from kmv.core import streams
-from kmv.core.markers import Marker
-
-# ----------------------------------------------------------
-#  Marker ops sent over the marker_q:
-#  { "op": "add" | "update" | "remove", "id": id, "payload": Marker | dict }
-# ----------------------------------------------------------
-from kmv.core.types import RenderMode, ViewerConfig
+from kmv.core.types import AddMarker, Marker, RemoveMarker, RenderMode, UpdateMarker, ViewerConfig
 from kmv.ipc.control import ControlPipe, make_metrics_queue
 from kmv.ipc.shared_ring import SharedMemoryRing
 from kmv.worker.entrypoint import run_worker
@@ -177,17 +171,17 @@ class QtViewer:
     def add_marker(self, marker: Marker) -> None:
         """Register a brand-new marker (fails silently if ID exists)."""
         if not self._closed:
-            self._marker_q.put({"op": "add", "id": marker.id, "payload": marker})
+            self._marker_q.put(AddMarker(id=marker.id, marker=marker))
 
-    def update_marker(self, id: str | int, **fields) -> None:
+    def update_marker(self, id: str | int, **fields: object) -> None:
         """Modify an existing marker in place."""
         if not self._closed:
-            self._marker_q.put({"op": "update", "id": id, "payload": fields})
+            self._marker_q.put(UpdateMarker(id=id, fields=fields))
 
     def remove_marker(self, id: str | int) -> None:
         """Remove the marker with *id* from the viewer."""
         if not self._closed:
-            self._marker_q.put({"op": "remove", "id": id})
+            self._marker_q.put(RemoveMarker(id=id))
 
     def drain_control_pipe(self) -> np.ndarray | None:
         """Return the latest push forces array.

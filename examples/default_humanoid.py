@@ -12,7 +12,7 @@ import colorlogging
 import mujoco
 
 from kmv.app.viewer import QtViewer
-from kmv.core.markers import GeomType, Marker
+from kmv.core.types import GeomType, Marker
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,9 @@ def run_default_humanoid() -> None:
         )
     )
 
-    viewer.add_marker(Marker(id="red_sphere", pos=(0, 0, 0), geom_type=GeomType.SPHERE, size=(0.05, 0.05, 0.05), rgba=(1, 0, 0, 1)))
+    viewer.add_marker(
+        Marker(id="red_sphere", pos=(0, 0, 0), geom_type=GeomType.SPHERE, size=(0.05, 0.05, 0.05), rgba=(1, 0, 0, 1))
+    )
 
     logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C or close window to quit.")
 
@@ -75,10 +77,9 @@ def run_default_humanoid() -> None:
                     "qvel2": float(data.qvel[2]),
                 },
             )
-            
+
             if sim_it_counter % 100 == 0:
                 viewer.update_marker("torso_arrow", rgba=(1, 0, 0, 1))
-
 
             # Sleep so that sim-time == wall-time
             target_wall = t0_wall + (data.time + PHYSICS_DT)
