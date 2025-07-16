@@ -81,8 +81,7 @@ class GLViewport(QOpenGLWidget):
         self._ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_150)
 
     def paintGL(self) -> None:  # noqa: N802
-        """Render a frame and emit drag forces if any."""
-        # MuJoCo expects xfrc_applied to be cleared each frame
+        """Render a frame and (if needed) emit drag forces back to the parent."""
         self._data.xfrc_applied[:] = 0
         mujoco.mjv_applyPerturbPose(self.model, self._data, self.pert, 0)
         mujoco.mjv_applyPerturbForce(self.model, self._data, self.pert)
@@ -106,11 +105,15 @@ class GLViewport(QOpenGLWidget):
         for m in self._markers:
             if self.scene.ngeom >= self.scene.maxgeom:
                 break
+
+            geom_enum = m.geom_type.to_mj_geom()
+            size_vec = np.asarray(m.size, dtype=np.float64)
+
             slot = self.scene.geoms[self.scene.ngeom]
             mujoco.mjv_initGeom(
                 slot,
-                mujoco.mjtGeom.mjGEOM_SPHERE,
-                np.array([m.radius, 0, 0]),
+                geom_enum,
+                size_vec,
                 np.asarray(m.pos, dtype=np.float64),
                 np.eye(3).flatten(),
                 np.asarray(m.rgba, dtype=np.float32),

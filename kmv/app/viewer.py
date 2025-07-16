@@ -15,7 +15,7 @@ import mujoco
 import numpy as np
 
 from kmv.core import streams
-from kmv.core.markers import SphereMarker
+from kmv.core.markers import Marker
 from kmv.core.types import RenderMode, ViewerConfig
 from kmv.ipc.control import ControlPipe, make_metrics_queue
 from kmv.ipc.shared_ring import SharedMemoryRing
@@ -166,7 +166,7 @@ class QtViewer:
             return
         self._plot_q.put({"group": group, "scalars": dict(scalars)})
 
-    def push_markers(self, *markers: SphereMarker) -> None:
+    def push_markers(self, *markers: Marker) -> None:
         if not self._closed and markers:
             self._marker_q.put(markers)
 
