@@ -10,6 +10,8 @@ from pathlib import Path
 
 import colorlogging
 import mujoco
+import numpy as np
+from collections import deque
 
 from kmv.app.viewer import QtViewer
 from kmv.core.types import GeomType, Marker
@@ -17,6 +19,8 @@ from kmv.core.types import GeomType, Marker
 logger = logging.getLogger(__name__)
 
 PHYSICS_DT = 0.02
+TRAIL_LEN = 150          # max # of capsule segments to keep
+STEP_SKIP = 3            # decimate updates (every N sim steps)
 
 
 def run_default_humanoid() -> None:
@@ -28,6 +32,39 @@ def run_default_humanoid() -> None:
     data = mujoco.MjData(model)
 
     viewer = QtViewer(model)
+
+    # ------------------------------------------------------------------
+    #  Trail bookkeeping
+    # ------------------------------------------------------------------
+    trail_pts: deque[np.ndarray] = deque(maxlen=TRAIL_LEN + 1)  # vertices
+    trail_ids: deque[str] = deque(maxlen=TRAIL_LEN)             # marker IDs
+    next_seg = 0
+
+    def _make_segment(p0: np.ndarray, p1: np.ndarray, seg_id: str) -> Marker:
+        """Create a world-space capsule whose axis runs from p0 → p1."""
+        mid = (p0 + p1) * 0.5
+        d   = p1 - p0
+        length = float(np.linalg.norm(d))
+        if length < 1e-9:                # guard for zero-length
+            return Marker(id=seg_id, pos=tuple(mid))
+
+        # Build a rotation matrix that aligns +z with the segment direction
+        z = d / length
+        x = np.cross([0, 0, 1], z)
+        if np.linalg.norm(x) < 1e-9:     # collinear with world-z
+            x = np.array([1, 0, 0])
+        x /= np.linalg.norm(x)
+        y = np.cross(z, x)
+        rot = np.stack([x, y, z], axis=1).reshape(-1)   # row-major 9-tuple
+
+        return Marker(
+            id=seg_id,
+            pos=tuple(mid),
+            geom_type=GeomType.CAPSULE,
+            size=(0.01, length * 0.5, 0.01),     # (radius, half-len, radius)
+            rgba=(0.1, 0.6, 1.0, 0.9),           # light-blue, slight alpha
+            orient=tuple(rot),                   # ← **key change**
+        )
 
     body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "torso")
     viewer.add_marker(
@@ -77,6 +114,24 @@ def run_default_humanoid() -> None:
                     "qvel2": float(data.qvel[2]),
                 },
             )
+
+            # ----------------------------------------------------------
+            #  Live torso trail (capsule segments)
+            # ----------------------------------------------------------
+            torso_xyz = data.xpos[body_id].copy()
+            if sim_it_counter % STEP_SKIP == 0:
+                trail_pts.append(torso_xyz)
+
+                if len(trail_pts) >= 2:
+                    p0, p1 = trail_pts[-2], trail_pts[-1]
+                    seg_id = f"trail_{next_seg}"
+                    next_seg += 1
+                    viewer.add_marker(_make_segment(p0, p1, seg_id))
+                    trail_ids.append(seg_id)
+
+                # Keep the list bounded
+                if len(trail_ids) == TRAIL_LEN:
+                    viewer.remove_marker(trail_ids.popleft())
 
             if sim_it_counter % 100 == 0:
                 viewer.update_marker("torso_arrow", rgba=(1, 0, 0, 1))

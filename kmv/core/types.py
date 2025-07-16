@@ -99,6 +99,12 @@ class Marker:
     geom_id: int | None = None
     local_offset: Tuple[float, float, float] = (0.0, 0.0, 0.0)
 
+    orient: Tuple[float, ...] = (
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 0.0, 1.0,
+    )
+
     def clone_with(self, **kwargs: object) -> "Marker":
         """Return a new Marker with *kwargs* overwritten."""
         return replace(self, **kwargs)

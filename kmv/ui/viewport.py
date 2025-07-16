@@ -122,7 +122,7 @@ class GLViewport(QOpenGLWidget):
                 m.geom_type.to_mj_geom(),
                 np.asarray(m.size, dtype=np.float64),
                 pos_world,
-                np.eye(3).flatten(),
+                np.asarray(m.orient, dtype=np.float64),
                 np.asarray(m.rgba, dtype=np.float32),
             )
             self.scene.ngeom += 1
