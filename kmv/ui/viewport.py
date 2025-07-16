@@ -106,15 +106,22 @@ class GLViewport(QOpenGLWidget):
             if self.scene.ngeom >= self.scene.maxgeom:
                 break
 
-            geom_enum = m.geom_type.to_mj_geom()
-            size_vec = np.asarray(m.size, dtype=np.float64)
+            def _get_frame_pos(pos: np.ndarray, mat: np.ndarray) -> np.ndarray:
+                return pos + mat.reshape(3, 3) @ np.asarray(m.local_offset, dtype=np.float64)
+
+            if m.body_id is not None:
+                pos_world = _get_frame_pos(self._data.xpos[m.body_id], self._data.xmat[m.body_id])
+            elif m.geom_id is not None:
+                pos_world = _get_frame_pos(self._data.geom_xpos[m.geom_id], self._data.geom_xmat[m.geom_id])
+            else:
+                pos_world = np.asarray(m.pos, dtype=np.float64)
 
             slot = self.scene.geoms[self.scene.ngeom]
             mujoco.mjv_initGeom(
                 slot,
-                geom_enum,
-                size_vec,
-                np.asarray(m.pos, dtype=np.float64),
+                m.geom_type.to_mj_geom(),
+                np.asarray(m.size, dtype=np.float64),
+                pos_world,
                 np.eye(3).flatten(),
                 np.asarray(m.rgba, dtype=np.float32),
             )

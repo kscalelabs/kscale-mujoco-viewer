@@ -40,7 +40,12 @@ _MJ_MAP: dict[GeomType, mujoco.mjtGeom] = {
 class Marker:
     """Generic debug marker – choose any supported `GeomType`."""
 
-    pos: Tuple[float, float, float]
+    pos: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+
     geom_type: GeomType = GeomType.SPHERE
     size: Tuple[float, float, float] = (0.05, 0.05, 0.05)
     rgba: RGBA = (1.0, 0.0, 0.0, 1.0)
+
+    body_id: int | None = None
+    geom_id: int | None = None
+    local_offset: Tuple[float, float, float] = (0.0, 0.0, 0.0)

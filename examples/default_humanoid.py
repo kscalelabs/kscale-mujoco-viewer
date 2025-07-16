@@ -29,7 +29,18 @@ def run_default_humanoid() -> None:
 
     viewer = QtViewer(model)
 
-    viewer.push_markers(Marker(pos=(0, 0, 0), geom_type=GeomType.SPHERE, size=(0.05, 0.05, 0.05), rgba=(1, 0, 0, 1)))
+    body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "torso")
+    viewer.push_markers(
+        Marker(
+            body_id=body_id,  # <— follow “torso” body
+            local_offset=(0.0, 0.0, 0.2),  # 20 cm above COM
+            geom_type=GeomType.ARROW,
+            size=(0.22, 0.20, 0.2),  # arrow radius / length
+            rgba=(0.0, 1.0, 0.0, 1.0),
+        )
+    )
+
+    # viewer.push_markers(Marker(pos=(0, 0, 0), geom_type=GeomType.SPHERE, size=(0.05, 0.05, 0.05), rgba=(1, 0, 0, 1)))
 
     logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C or close window to quit.")
 
