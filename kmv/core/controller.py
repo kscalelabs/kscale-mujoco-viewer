@@ -5,6 +5,7 @@ streams from shared-memory rings, drains metric queues, and keeps a rolling
 set of timing / telemetry values that the Qt widgets display.
 """
 
+import logging
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -24,6 +25,8 @@ from kmv.core.types import (
 )
 from kmv.ipc.shared_ring import SharedMemoryRing
 from kmv.utils.geometry import capsule_between
+
+logger = logging.getLogger(__name__)
 
 _Array = np.ndarray
 _Scalars = Mapping[str, float]
@@ -139,55 +142,58 @@ class RenderLoop:
 
     def _drain_markers(self) -> None:
         """Handle marker *and* trail commands arriving over the queue."""
+
+        def _new_trail(cmd: AddTrail) -> None:
+            self._trails[cmd.id] = _TrailState(
+                max_len=cmd.max_len,
+                radius=cmd.radius,
+                rgba=cmd.rgba,
+                pts=deque(maxlen=(cmd.max_len or 0) + 1),
+                seg_ids=deque(maxlen=(cmd.max_len or 0)),
+            )
+
+        def _push_point(cmd: PushTrailPoint, st: _TrailState) -> None:
+            st.pts.append(np.asarray(cmd.point, dtype=np.float64))
+
+            if len(st.pts) < 2:  # need ≥2 points for a segment
+                return
+
+            p0, p1 = st.pts[-2], st.pts[-1]
+            seg_id = f"{cmd.id}_{st.next_seg}"
+            st.next_seg += 1
+
+            self._markers[seg_id] = capsule_between(
+                p0,
+                p1,
+                radius=st.radius,
+                seg_id=seg_id,
+                rgba=st.rgba,
+            )
+
+            # enforce max_len
+            if st.max_len is not None and len(st.seg_ids) >= st.max_len:
+                self._markers.pop(st.seg_ids.popleft(), None)
+
+            st.seg_ids.append(seg_id)
+
         while (cmd := self._get_markers()) is not None:
-            # ----- ordinary markers -------------------------------------------------
-            if isinstance(cmd, _MarkerCmd):
-                cmd.apply(self._markers)
-                continue
+            match cmd:
+                case _MarkerCmd():
+                    cmd.apply(self._markers)
 
-            # ----- trails -----------------------------------------------------------
-            # 1) new trail
-            if isinstance(cmd, AddTrail):
-                self._trails[cmd.id] = _TrailState(
-                    max_len=cmd.max_len,
-                    radius=cmd.radius,
-                    rgba=cmd.rgba,
-                    pts=deque(maxlen=(cmd.max_len or 0) + 1),
-                    seg_ids=deque(maxlen=(cmd.max_len or 0)),
-                )
-                continue
+                case AddTrail():
+                    _new_trail(cmd)
 
-            # 2) push point
-            if isinstance(cmd, PushTrailPoint):
-                st = self._trails.get(cmd.id)
-                if st is None:
-                    continue  # silently ignore unknown trail
-                pt = np.asarray(cmd.point, dtype=np.float64)
-                st.pts.append(pt)
+                case PushTrailPoint() if st := self._trails.get(cmd.id):
+                    _push_point(cmd, st)
 
-                # need ≥2 points to make a segment
-                if len(st.pts) >= 2:
-                    p0, p1 = st.pts[-2], st.pts[-1]
-                    seg_id = f"{cmd.id}_{st.next_seg}"
-                    st.next_seg += 1
-
-                    self._markers[seg_id] = capsule_between(p0, p1, radius=st.radius, seg_id=seg_id, rgba=st.rgba)
-
-                    # cap trail length **before** we lose the ID
-                    if st.max_len is not None and len(st.seg_ids) >= st.max_len:
-                        old_seg = st.seg_ids.popleft()  # now we still have it
-                        self._markers.pop(old_seg, None)  # remove its Marker
-
-                    st.seg_ids.append(seg_id)
-                continue
-
-            # 3) remove trail
-            if isinstance(cmd, RemoveTrail):
-                st = self._trails.pop(cmd.id, None)
-                if st:
+                case RemoveTrail() if st := self._trails.pop(cmd.id, None):
                     for seg_id in st.seg_ids:
                         self._markers.pop(seg_id, None)
-                continue
+
+                case _:
+                    logger.warning("Unknown marker command: %s", cmd)
+                    continue
 
     def _account_timing(self) -> None:
         """Account for timing metrics."""
