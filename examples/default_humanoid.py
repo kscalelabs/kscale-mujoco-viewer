@@ -17,9 +17,6 @@ from kmv.core.types import GeomType, Marker
 logger = logging.getLogger(__name__)
 
 PHYSICS_DT = 0.02
-TRAIL_LEN = 150  # max # of capsule segments to keep
-STEP_SKIP = 3  # decimate updates (every N sim steps)
-
 
 def run_default_humanoid() -> None:
     """Run the default humanoid simulation."""
@@ -31,11 +28,12 @@ def run_default_humanoid() -> None:
 
     viewer = QtViewer(model)
 
-    body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "torso")
+    # How to add a marker that tracks the torso
+    torso_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "torso")
     viewer.add_marker(
         Marker(
             id="torso_arrow",
-            body_id=body_id,
+            body_id=torso_body_id,
             local_offset=(0, 0, 0.35),
             geom_type=GeomType.ARROW,
             size=(0.02, 0.020, 0.2),
@@ -47,7 +45,15 @@ def run_default_humanoid() -> None:
         Marker(id="red_sphere", pos=(0, 0, 0), geom_type=GeomType.SPHERE, size=(0.05, 0.05, 0.05), rgba=(1, 0, 0, 1))
     )
 
-    viewer.add_trail("torso_path", max_len=100, radius=0.012, min_segment_dist=0.05)
+    left_hand_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hand_left")
+    viewer.add_trail("left_hand_path_manual", max_len=100, radius=0.012, min_segment_dist=0.01, rgba=(1, 0, 1, 1))
+    
+    viewer.add_trail(
+        "torso_path",
+        track_body_id=torso_body_id,
+        max_len=300,
+        radius=0.01,
+    )
 
     logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C or close window to quit.")
 
@@ -82,9 +88,8 @@ def run_default_humanoid() -> None:
                 },
             )
 
-            torso_xyz = data.xpos[body_id].copy()
-
-            viewer.push_trail_point("torso_path", tuple(torso_xyz))
+            left_hand_xyz = data.xpos[left_hand_body_id].copy()
+            viewer.push_trail_point("left_hand_path_manual", tuple(left_hand_xyz))
 
             if sim_it_counter % 100 == 0:
                 viewer.update_marker("torso_arrow", rgba=(1, 0, 0, 1))

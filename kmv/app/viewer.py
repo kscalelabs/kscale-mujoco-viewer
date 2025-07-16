@@ -201,11 +201,21 @@ class QtViewer:
         radius: float = 0.01,
         rgba: tuple[float, float, float, float] = (0.1, 0.6, 1.0, 0.9),
         min_segment_dist: float = 1e-3,
+        track_body_id: int | None = None,
+        track_geom_id: int | None = None,
     ) -> None:
         """Create a new trail (does nothing if ID already exists)."""
         if not self._closed:
             self._marker_q.put(
-                AddTrail(id=trail_id, max_len=max_len, radius=radius, rgba=rgba, min_segment_dist=min_segment_dist)
+                AddTrail(
+                    id=trail_id,
+                    max_len=max_len,
+                    radius=radius,
+                    rgba=rgba,
+                    min_segment_dist=min_segment_dist,
+                    track_body_id=track_body_id,
+                    track_geom_id=track_geom_id,
+                )
             )
 
     def push_trail_point(self, trail_id: str | int, point: tuple[float, float, float]) -> None:

@@ -39,6 +39,8 @@ class _TrailState:
     radius: float
     rgba: tuple[float, float, float, float]
     min_segment_dist: float
+    track_body_id: int | None
+    track_geom_id: int | None
     pts: deque[np.ndarray]  # all vertices (max_len + 1)
     seg_ids: deque[str]  # IDs of capsule markers
     next_seg: int = 0  # running counter
@@ -102,6 +104,7 @@ class RenderLoop:
         self._pull_state()
         self._drain_metrics()
         self._drain_markers()
+        self._autotrack_trails()
         self._account_timing()
 
     def _pull_state(self) -> None:
@@ -150,39 +153,11 @@ class RenderLoop:
                 radius=cmd.radius,
                 rgba=cmd.rgba,
                 min_segment_dist=cmd.min_segment_dist,
+                track_body_id=cmd.track_body_id,
+                track_geom_id=cmd.track_geom_id,
                 pts=deque(maxlen=(cmd.max_len or 0) + 1),
                 seg_ids=deque(maxlen=(cmd.max_len or 0)),
             )
-
-        def _push_point(cmd: PushTrailPoint, st: _TrailState) -> None:
-            pt = np.asarray(cmd.point, dtype=np.float64)
-
-            # discard if we already have a point and this one is too close
-            if st.pts and np.linalg.norm(pt - st.pts[-1]) < st.min_segment_dist:
-                return
-
-            st.pts.append(pt)
-
-            if len(st.pts) < 2:
-                return
-
-            p0, p1 = st.pts[-2], st.pts[-1]
-            seg_id = f"{cmd.id}_{st.next_seg}"
-            st.next_seg += 1
-
-            self._markers[seg_id] = capsule_between(
-                p0,
-                p1,
-                radius=st.radius,
-                seg_id=seg_id,
-                rgba=st.rgba,
-            )
-
-            # enforce max_len
-            if st.max_len is not None and len(st.seg_ids) >= st.max_len:
-                self._markers.pop(st.seg_ids.popleft(), None)
-
-            st.seg_ids.append(seg_id)
 
         while (cmd := self._get_markers()) is not None:
             match cmd:
@@ -193,7 +168,8 @@ class RenderLoop:
                     _new_trail(cmd)
 
                 case PushTrailPoint() if st := self._trails.get(cmd.id):
-                    _push_point(cmd, st)
+                    pt = np.asarray(cmd.point, dtype=np.float64)
+                    self._append_trail_point(cmd.id, pt, st, check_distance=True)
 
                 case RemoveTrail() if st := self._trails.pop(cmd.id, None):
                     for seg_id in st.seg_ids:
@@ -202,6 +178,54 @@ class RenderLoop:
                 case _:
                     logger.warning("Unknown marker command: %s", cmd)
                     continue
+
+    def _autotrack_trails(self) -> None:
+        """Emit a point for every trail that is set to follow a body/geom."""
+        for trail_id, trail_state in self._trails.items():
+            pos: np.ndarray | None = None
+            if trail_state.track_body_id is not None:
+                pos = self._data.xpos[trail_state.track_body_id].copy()
+            elif trail_state.track_geom_id is not None:
+                pos = self._data.geom_xpos[trail_state.track_geom_id].copy()
+
+            if pos is None:
+                continue
+
+            # Check if the point is too close to the previous point
+            if not trail_state.pts or np.linalg.norm(pos - trail_state.pts[-1]) >= trail_state.min_segment_dist:
+                self._append_trail_point(trail_id, pos, trail_state, check_distance=False)
+
+    def _append_trail_point(
+        self,
+        trail_id: str | int,
+        pt: np.ndarray,
+        st: _TrailState,
+        *,                     # keyword-only flags
+        check_distance: bool = True,
+    ) -> None:
+        """Add *pt* to trail *trail_id*, optionally enforcing `min_segment_dist`."""
+        # Optional distance filter
+        if check_distance and st.pts and np.linalg.norm(pt - st.pts[-1]) < st.min_segment_dist:
+            return
+
+        # Stash the vertex
+        st.pts.append(pt)
+        if len(st.pts) < 2:
+            return
+
+        # Build the capsule
+        p0, p1 = st.pts[-2], st.pts[-1]
+        seg_id = f"{trail_id}_{st.next_seg}"
+        st.next_seg += 1
+
+        self._markers[seg_id] = capsule_between(
+            p0, p1, radius=st.radius, seg_id=seg_id, rgba=st.rgba
+        )
+
+        # Ring-buffer enforcement
+        if st.max_len is not None and len(st.seg_ids) >= st.max_len:
+            self._markers.pop(st.seg_ids.popleft(), None)
+        st.seg_ids.append(seg_id)
 
     def _account_timing(self) -> None:
         """Account for timing metrics."""
