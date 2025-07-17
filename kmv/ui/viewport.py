@@ -13,6 +13,8 @@ from PySide6.QtGui import QMouseEvent, QSurfaceFormat, QWheelEvent
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QWidget
 
+from kmv.core.types import Marker
+
 _fmt = QSurfaceFormat()
 _fmt.setDepthBufferSize(24)
 _fmt.setStencilBufferSize(8)
@@ -60,6 +62,8 @@ class GLViewport(QOpenGLWidget):
         # forces callback
         self._on_forces = on_forces
 
+        self._markers: tuple[Marker, ...] = ()
+
         # mouse state
         from PySide6.QtCore import Qt as _QtAlias  # noqa: PLC0415
 
@@ -79,8 +83,7 @@ class GLViewport(QOpenGLWidget):
         self._ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_150)
 
     def paintGL(self) -> None:  # noqa: N802
-        """Render a frame and emit drag forces if any."""
-        # MuJoCo expects xfrc_applied to be cleared each frame
+        """Render a frame and (if needed) emit drag forces back to the parent."""
         self._data.xfrc_applied[:] = 0
         mujoco.mjv_applyPerturbPose(self.model, self._data, self.pert, 0)
         mujoco.mjv_applyPerturbForce(self.model, self._data, self.pert)
@@ -101,10 +104,39 @@ class GLViewport(QOpenGLWidget):
             self.scene,
         )
 
+        for marker in self._markers:
+            if self.scene.ngeom >= self.scene.maxgeom:
+                break
+
+            def _get_frame_pos(pos: np.ndarray, mat: np.ndarray) -> np.ndarray:
+                return pos + mat.reshape(3, 3) @ np.asarray(marker.local_offset, dtype=np.float64)
+
+            if marker.body_id is not None:
+                pos_world = _get_frame_pos(self._data.xpos[marker.body_id], self._data.xmat[marker.body_id])
+            elif marker.geom_id is not None:
+                pos_world = _get_frame_pos(self._data.geom_xpos[marker.geom_id], self._data.geom_xmat[marker.geom_id])
+            else:
+                pos_world = np.asarray(marker.pos, dtype=np.float64)
+
+            slot = self.scene.geoms[self.scene.ngeom]
+            mujoco.mjv_initGeom(
+                slot,
+                marker.geom_type.to_mj_geom(),
+                np.asarray(marker.size, dtype=np.float64),
+                pos_world,
+                np.asarray(marker.orient, dtype=np.float64),
+                np.asarray(marker.rgba, dtype=np.float32),
+            )
+            self.scene.ngeom += 1
+
         if self._callback:
             self._callback(self.model, self._data, self.scene)
 
         mujoco.mjr_render(rect, self.scene, self._ctx)
+
+    def set_markers(self, markers: tuple[Marker, ...]) -> None:
+        """Set the markers to be rendered in the viewport."""
+        self._markers = markers
 
     def mousePressEvent(self, ev: QMouseEvent) -> None:  # noqa: N802
         """Start drag or body-perturb interaction (Ctrl-click)."""

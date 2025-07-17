@@ -28,6 +28,7 @@ def run_worker(
     ctrl_send: Connection,
     table_q: Queue,
     plot_q: Queue,
+    marker_q: Queue,
     view_conf: ViewerConfig,
 ) -> None:
     """Boot the GUI process and run its Qt event-loop."""
@@ -44,7 +45,9 @@ def run_worker(
 
     # Start Qt
     app = QApplication.instance() or QApplication(sys.argv)
-    window = ViewerWindow(model, data, rings, table_q=table_q, plot_q=plot_q, ctrl_send=ctrl_send, view_conf=view_conf)
+    window = ViewerWindow(
+        model, data, rings, table_q=table_q, plot_q=plot_q, marker_q=marker_q, ctrl_send=ctrl_send, view_conf=view_conf
+    )
 
     # Notify the parent that the worker is ready
     # The parent waits on this message before continuing

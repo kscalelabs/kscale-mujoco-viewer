@@ -45,6 +45,7 @@ class ViewerWindow(QMainWindow):
         *,
         table_q: Queue,
         plot_q: Queue,
+        marker_q: Queue,
         ctrl_send: Connection,  # NEW
         view_conf: ViewerConfig,
         parent: QWidget | None = None,
@@ -57,7 +58,7 @@ class ViewerWindow(QMainWindow):
 
         self._model, self._data = model, data
         self._rings = rings
-        self._table_q, self._plot_q = table_q, plot_q
+        self._table_q, self._plot_q, self._marker_q = table_q, plot_q, marker_q
         self._ctrl_send = ctrl_send
         self._enable_plots = cfg.enable_plots
 
@@ -207,6 +208,7 @@ class ViewerWindow(QMainWindow):
             on_forces=lambda a: self._ctrl_send.send(("forces", a)),
             get_table=get_table_packet,
             get_plot=get_plot_packet,
+            get_markers=lambda: _pop(self._marker_q),
         )
 
     def _menu_for_path(self, path: str) -> tuple[QMenu, str]:
@@ -258,6 +260,8 @@ class ViewerWindow(QMainWindow):
     def step_and_draw(self) -> None:
         """Advance one GUI frame: pull state, update widgets, repaint."""
         self._rl.tick()
+
+        self._viewport.set_markers(tuple(self._rl._markers.values()))
 
         # Table
         self._viewer_stats_table.refresh(self._rl._last_table)

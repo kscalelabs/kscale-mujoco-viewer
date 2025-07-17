@@ -12,6 +12,7 @@ import colorlogging
 import mujoco
 
 from kmv.app.viewer import QtViewer
+from kmv.core.types import GeomType, Marker
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,38 @@ def run_default_humanoid() -> None:
 
     viewer = QtViewer(model)
     logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C or close window to quit.")
+
+    # How to add a marker that automatically tracks the torso
+    torso_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "torso")
+    viewer.add_marker(
+        Marker(
+            id="torso_arrow",
+            body_id=torso_body_id,
+            local_offset=(0, 0, 0.35),
+            geom_type=GeomType.ARROW,
+            size=(0.02, 0.020, 0.2),
+            rgba=(0, 1, 0, 1),
+        )
+    )
+
+    # How to add a marker that just stays put
+    viewer.add_marker(
+        Marker(id="red_sphere", pos=(0, 0, 0), geom_type=GeomType.SPHERE, size=(0.05, 0.05, 0.05), rgba=(1, 0, 0, 1))
+    )
+
+    # How to add a trail that automatically tracks the torso
+    viewer.add_trail(
+        "torso_path",
+        track_body_id=torso_body_id,
+        max_len=300,
+        radius=0.01,
+    )
+
+    # How to add a trail where you can manually push points
+    # Note how we're not passing the track_body_id argument
+    # We will manually push points to this trail in the simulation loop
+    left_hand_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hand_left")
+    viewer.add_trail("left_hand_path_manual", max_len=100, radius=0.01, min_segment_dist=0.01, rgba=(1, 0, 1, 1))
 
     sim_it_counter = 0
     t0_wall = time.perf_counter()
@@ -59,6 +92,13 @@ def run_default_humanoid() -> None:
                     "qvel2": float(data.qvel[2]),
                 },
             )
+
+            left_hand_xyz = data.xpos[left_hand_body_id].copy()
+            viewer.push_trail_point("left_hand_path_manual", tuple(left_hand_xyz))
+
+            # You can also update markers in place
+            if sim_it_counter % 100 == 0:
+                viewer.update_marker("torso_arrow", rgba=(1, 0, 0, 1))
 
             # Sleep so that sim-time == wall-time
             target_wall = t0_wall + (data.time + PHYSICS_DT)
