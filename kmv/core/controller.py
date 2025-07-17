@@ -222,7 +222,12 @@ class RenderLoop:
         seg_id = f"{trail_id}_{trail_state.next_seg}"
         trail_state.next_seg += 1
 
-        self._markers[seg_id] = capsule_from_to(p0, p1, radius=trail_state.radius, seg_id=seg_id, rgba=trail_state.rgba)
+        trail_segment_marker = capsule_from_to(p0, p1, radius=trail_state.radius, seg_id=seg_id, rgba=trail_state.rgba)
+        # If the capsule builder decided the segment is degenerate, skip it.
+        if trail_segment_marker is None:
+            return
+
+        self._markers[seg_id] = trail_segment_marker
 
         # Ring-buffer enforcement
         if trail_state.max_len is not None and len(trail_state.seg_ids) >= trail_state.max_len:

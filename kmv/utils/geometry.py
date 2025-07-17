@@ -1,5 +1,7 @@
 """Geometry helpers shared across kmv."""
 
+from typing import Optional
+
 import numpy as np
 
 from kmv.core.types import GeomType, Marker
@@ -37,16 +39,21 @@ def capsule_from_to(
     radius: float,
     seg_id: str | int,
     rgba: tuple[float, float, float, float] = (0.1, 0.6, 1.0, 0.9),
-) -> Marker:
+) -> Optional[Marker]:
     """Convenience: return a `Marker` for a capsule whose axis runs from p0 to p1.
 
     Keeps the +Z-axis convention and fills in `size` & `orient`.
+
+    Returns:
+        Marker or None if the segment is too short.
     """
     mid = 0.5 * (p0 + p1)
     d = p1 - p0
     length = float(np.linalg.norm(d))
+
+    # Degenerate segment – nothing to draw.
     if length < 1e-9:
-        return Marker(id=seg_id, pos=tuple(mid))  # degenerate
+        return None
 
     rot = orient_z_to_vec(d).reshape(-1)  # row-major
     return Marker(
