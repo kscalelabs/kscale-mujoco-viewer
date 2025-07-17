@@ -64,7 +64,7 @@ class RenderLoop:
         on_forces: _OnForces | None = None,
         get_table: Callable[[], TelemetryPacket | None],
         get_plot: Callable[[], PlotPacket | None],
-        get_markers: Callable[[], tuple[object, ...] | None],
+        get_markers: Callable[[], object | None],
     ) -> None:
         self._model, self._data = model, data
         self._rings = rings

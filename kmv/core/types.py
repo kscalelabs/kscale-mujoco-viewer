@@ -106,7 +106,7 @@ class Marker:
 
     def clone_with(self, **kwargs: object) -> "Marker":
         """Return a new Marker with *kwargs* overwritten."""
-        return replace(self, **kwargs)
+        return replace(self, **kwargs)  # type: ignore[arg-type]
 
 
 @dataclass(frozen=True, slots=True)

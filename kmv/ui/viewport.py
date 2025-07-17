@@ -13,6 +13,8 @@ from PySide6.QtGui import QMouseEvent, QSurfaceFormat, QWheelEvent
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QWidget
 
+from kmv.core.types import Marker
+
 _fmt = QSurfaceFormat()
 _fmt.setDepthBufferSize(24)
 _fmt.setStencilBufferSize(8)
@@ -60,7 +62,7 @@ class GLViewport(QOpenGLWidget):
         # forces callback
         self._on_forces = on_forces
 
-        self._markers: tuple[object, ...] = ()
+        self._markers: tuple[Marker, ...] = ()
 
         # mouse state
         from PySide6.QtCore import Qt as _QtAlias  # noqa: PLC0415
@@ -132,7 +134,7 @@ class GLViewport(QOpenGLWidget):
 
         mujoco.mjr_render(rect, self.scene, self._ctx)
 
-    def set_markers(self, markers: tuple[object, ...]) -> None:
+    def set_markers(self, markers: tuple[Marker, ...]) -> None:
         """Set the markers to be rendered in the viewport."""
         self._markers = markers
 
