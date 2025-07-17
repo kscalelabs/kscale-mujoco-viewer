@@ -5,26 +5,32 @@ import numpy as np
 from kmv.core.types import GeomType, Marker
 
 
-def orient_z_to_vec(v: np.ndarray, *, eps: float = 1e-9) -> np.ndarray:
+def orient_z_to_vec(vec: np.ndarray, *, eps: float = 1e-9) -> np.ndarray:
     """Return a 3 × 3 row-major rotation matrix whose **+Z axis** points along *v*.
 
-    Behaviour matches the hand-written version in *examples/default_humanoid.py*.
+    This function takes a vector as input, and returns a 3x3 rotation matrix such that
+    the +Z axis of that matrix points along (or towards) the vector.
     """
-    v = v.astype(float, copy=False)
-    v_norm = np.linalg.norm(v)
+    vec = vec.astype(float, copy=False)
+
+    # Normalize
+    v_norm = np.linalg.norm(vec)
     if v_norm < eps:
         return np.eye(3)
+    z = vec / v_norm
 
-    z = v / v_norm
+    # Cross unit Z-axis with vec to get X-axis
     x = np.cross([0.0, 0.0, 1.0], z)
     if np.linalg.norm(x) < eps:  # collinear → pick X-axis
         x = np.array([1.0, 0.0, 0.0])
     x /= np.linalg.norm(x)
+
+    # Cross Z-axis with X-axis to get Y-axis
     y = np.cross(z, x)
-    return np.stack([x, y, z], axis=1)  # rows: x y z
+    return np.stack([x, y, z], axis=1)
 
 
-def capsule_between(
+def capsule_from_to(
     p0: np.ndarray,
     p1: np.ndarray,
     *,
@@ -32,7 +38,7 @@ def capsule_between(
     seg_id: str | int,
     rgba: tuple[float, float, float, float] = (0.1, 0.6, 1.0, 0.9),
 ) -> Marker:
-    """Convenience: return a `Marker` for a capsule whose axis runs p0 → p1.
+    """Convenience: return a `Marker` for a capsule whose axis runs from p0 to p1.
 
     Keeps the +Z-axis convention and fills in `size` & `orient`.
     """

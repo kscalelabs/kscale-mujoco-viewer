@@ -24,7 +24,7 @@ from kmv.core.types import (
     _MarkerCmd,
 )
 from kmv.ipc.shared_ring import SharedMemoryRing
-from kmv.utils.geometry import capsule_between
+from kmv.utils.geometry import capsule_from_to
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +41,9 @@ class _TrailState:
     min_segment_dist: float
     track_body_id: int | None
     track_geom_id: int | None
-    pts: deque[np.ndarray]  # all vertices (max_len + 1)
-    seg_ids: deque[str]  # IDs of capsule markers
-    next_seg: int = 0  # running counter
+    pts: deque[np.ndarray]
+    seg_ids: deque[str]
+    next_seg: int = 0
 
 
 class RenderLoop:
@@ -167,12 +167,12 @@ class RenderLoop:
                 case AddTrail():
                     _new_trail(cmd)
 
-                case PushTrailPoint() if st := self._trails.get(cmd.id):
+                case PushTrailPoint() if trail_state := self._trails.get(cmd.id):
                     pt = np.asarray(cmd.point, dtype=np.float64)
-                    self._append_trail_point(cmd.id, pt, st, check_distance=True)
+                    self._append_trail_point(cmd.id, pt, trail_state, check_distance=True)
 
-                case RemoveTrail() if st := self._trails.pop(cmd.id, None):
-                    for seg_id in st.seg_ids:
+                case RemoveTrail() if trail_state := self._trails.pop(cmd.id, None):
+                    for seg_id in trail_state.seg_ids:
                         self._markers.pop(seg_id, None)
 
                 case _:
@@ -199,31 +199,35 @@ class RenderLoop:
         self,
         trail_id: str | int,
         pt: np.ndarray,
-        st: _TrailState,
+        trail_state: _TrailState,
         *,  # keyword-only flags
         check_distance: bool = True,
     ) -> None:
         """Add *pt* to trail *trail_id*, optionally enforcing `min_segment_dist`."""
         # Optional distance filter
-        if check_distance and st.pts and np.linalg.norm(pt - st.pts[-1]) < st.min_segment_dist:
+        if (
+            check_distance
+            and trail_state.pts
+            and np.linalg.norm(pt - trail_state.pts[-1]) < trail_state.min_segment_dist
+        ):
             return
 
         # Stash the vertex
-        st.pts.append(pt)
-        if len(st.pts) < 2:
+        trail_state.pts.append(pt)
+        if len(trail_state.pts) < 2:
             return
 
         # Build the capsule
-        p0, p1 = st.pts[-2], st.pts[-1]
-        seg_id = f"{trail_id}_{st.next_seg}"
-        st.next_seg += 1
+        p0, p1 = trail_state.pts[-2], trail_state.pts[-1]
+        seg_id = f"{trail_id}_{trail_state.next_seg}"
+        trail_state.next_seg += 1
 
-        self._markers[seg_id] = capsule_between(p0, p1, radius=st.radius, seg_id=seg_id, rgba=st.rgba)
+        self._markers[seg_id] = capsule_from_to(p0, p1, radius=trail_state.radius, seg_id=seg_id, rgba=trail_state.rgba)
 
         # Ring-buffer enforcement
-        if st.max_len is not None and len(st.seg_ids) >= st.max_len:
-            self._markers.pop(st.seg_ids.popleft(), None)
-        st.seg_ids.append(seg_id)
+        if trail_state.max_len is not None and len(trail_state.seg_ids) >= trail_state.max_len:
+            self._markers.pop(trail_state.seg_ids.popleft(), None)
+        trail_state.seg_ids.append(seg_id)
 
     def _account_timing(self) -> None:
         """Account for timing metrics."""

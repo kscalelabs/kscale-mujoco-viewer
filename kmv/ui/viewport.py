@@ -102,28 +102,28 @@ class GLViewport(QOpenGLWidget):
             self.scene,
         )
 
-        for m in self._markers:
+        for marker in self._markers:
             if self.scene.ngeom >= self.scene.maxgeom:
                 break
 
             def _get_frame_pos(pos: np.ndarray, mat: np.ndarray) -> np.ndarray:
-                return pos + mat.reshape(3, 3) @ np.asarray(m.local_offset, dtype=np.float64)
+                return pos + mat.reshape(3, 3) @ np.asarray(marker.local_offset, dtype=np.float64)
 
-            if m.body_id is not None:
-                pos_world = _get_frame_pos(self._data.xpos[m.body_id], self._data.xmat[m.body_id])
-            elif m.geom_id is not None:
-                pos_world = _get_frame_pos(self._data.geom_xpos[m.geom_id], self._data.geom_xmat[m.geom_id])
+            if marker.body_id is not None:
+                pos_world = _get_frame_pos(self._data.xpos[marker.body_id], self._data.xmat[marker.body_id])
+            elif marker.geom_id is not None:
+                pos_world = _get_frame_pos(self._data.geom_xpos[marker.geom_id], self._data.geom_xmat[marker.geom_id])
             else:
-                pos_world = np.asarray(m.pos, dtype=np.float64)
+                pos_world = np.asarray(marker.pos, dtype=np.float64)
 
             slot = self.scene.geoms[self.scene.ngeom]
             mujoco.mjv_initGeom(
                 slot,
-                m.geom_type.to_mj_geom(),
-                np.asarray(m.size, dtype=np.float64),
+                marker.geom_type.to_mj_geom(),
+                np.asarray(marker.size, dtype=np.float64),
                 pos_world,
-                np.asarray(m.orient, dtype=np.float64),
-                np.asarray(m.rgba, dtype=np.float32),
+                np.asarray(marker.orient, dtype=np.float64),
+                np.asarray(marker.rgba, dtype=np.float32),
             )
             self.scene.ngeom += 1
 

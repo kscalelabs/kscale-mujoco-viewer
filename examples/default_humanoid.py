@@ -28,8 +28,9 @@ def run_default_humanoid() -> None:
     data = mujoco.MjData(model)
 
     viewer = QtViewer(model)
+    logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C or close window to quit.")
 
-    # How to add a marker that tracks the torso
+    # How to add a marker that automatically tracks the torso
     torso_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "torso")
     viewer.add_marker(
         Marker(
@@ -42,13 +43,12 @@ def run_default_humanoid() -> None:
         )
     )
 
+    # How to add a marker that just stays put
     viewer.add_marker(
         Marker(id="red_sphere", pos=(0, 0, 0), geom_type=GeomType.SPHERE, size=(0.05, 0.05, 0.05), rgba=(1, 0, 0, 1))
     )
 
-    left_hand_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hand_left")
-    viewer.add_trail("left_hand_path_manual", max_len=100, radius=0.012, min_segment_dist=0.01, rgba=(1, 0, 1, 1))
-
+    # How to add a trail that automatically tracks the torso
     viewer.add_trail(
         "torso_path",
         track_body_id=torso_body_id,
@@ -56,7 +56,11 @@ def run_default_humanoid() -> None:
         radius=0.01,
     )
 
-    logger.info("Viewer launched — Ctrl-drag to perturb, hit Ctrl-C or close window to quit.")
+    # How to add a trail where you can manually push points
+    # Note how im not passing the track_body_id argument
+    # We will manually push points to this trail in the simulation loop
+    left_hand_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hand_left")
+    viewer.add_trail("left_hand_path_manual", max_len=100, radius=0.01, min_segment_dist=0.01, rgba=(1, 0, 1, 1))
 
     sim_it_counter = 0
     t0_wall = time.perf_counter()
@@ -92,6 +96,7 @@ def run_default_humanoid() -> None:
             left_hand_xyz = data.xpos[left_hand_body_id].copy()
             viewer.push_trail_point("left_hand_path_manual", tuple(left_hand_xyz))
 
+            # You can also update markers in place
             if sim_it_counter % 100 == 0:
                 viewer.update_marker("torso_arrow", rgba=(1, 0, 0, 1))
 

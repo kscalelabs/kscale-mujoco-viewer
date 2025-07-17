@@ -21,7 +21,7 @@ from kmv.core.types import (
     Marker,
     PushTrailPoint,
     RemoveMarker,
-    RemoveTrail,  # ← new
+    RemoveTrail,
     RenderMode,
     UpdateMarker,
     ViewerConfig,
@@ -175,9 +175,6 @@ class QtViewer:
             return
         self._plot_q.put({"group": group, "scalars": dict(scalars)})
 
-    # ------------------------------------------------------------------ #
-    #  Marker management (ID-based)                                      #
-    # ------------------------------------------------------------------ #
     def add_marker(self, marker: Marker) -> None:
         """Register a brand-new marker (fails silently if ID exists)."""
         if not self._closed:

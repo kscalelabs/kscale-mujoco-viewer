@@ -50,9 +50,6 @@ class PlotPacket(Msg):
     scalars: Mapping[str, float]
 
 
-"""Draw various markers in the viewer."""
-
-
 RGBA = Tuple[float, float, float, float]
 
 
@@ -87,18 +84,14 @@ _MJ_MAP: dict[GeomType, mujoco.mjtGeom] = {
 class Marker:
     """Generic debug marker – choose any supported `GeomType`."""
 
-    id: str | int  # ← unique handle set by caller
-
+    id: str | int
     pos: Tuple[float, float, float] = (0.0, 0.0, 0.0)
-
     geom_type: GeomType = GeomType.SPHERE
     size: Tuple[float, float, float] = (0.05, 0.05, 0.05)
     rgba: RGBA = (1.0, 0.0, 0.0, 1.0)
-
     body_id: int | None = None
     geom_id: int | None = None
     local_offset: Tuple[float, float, float] = (0.0, 0.0, 0.0)
-
     orient: Tuple[float, ...] = (
         1.0,
         0.0,
@@ -131,7 +124,6 @@ class AddMarker(_MarkerCmd):
     """Add a brand-new marker."""
 
     marker: Marker
-    op: Literal["add"] = "add"
 
     def apply(self, registry: dict[str | int, "Marker"]) -> None:
         registry.setdefault(self.id, self.marker)
@@ -142,7 +134,6 @@ class UpdateMarker(_MarkerCmd):
     """Update existing marker fields **in-place**."""
 
     fields: Mapping[str, object]
-    op: Literal["update"] = "update"
 
     def apply(self, registry: dict[str | int, "Marker"]) -> None:
         if self.id in registry:
@@ -152,8 +143,6 @@ class UpdateMarker(_MarkerCmd):
 @dataclass(frozen=True, slots=True)
 class RemoveMarker(_MarkerCmd):
     """Delete a marker by id."""
-
-    op: Literal["remove"] = "remove"
 
     def apply(self, registry: dict[str | int, "Marker"]) -> None:
         registry.pop(self.id, None)
@@ -179,7 +168,6 @@ class AddTrail(_TrailCmd):
     track_body_id: int | None = None  # if set, emit point every frame from body
     track_geom_id: int | None = None  # if set, emit point every frame from geom
     min_segment_dist: float = 1e-3  # don't add a segment unless ≥ this distance
-    op: Literal["trail_add"] = "trail_add"
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,14 +175,11 @@ class PushTrailPoint(_TrailCmd):
     """Append a single XYZ point to an existing trail."""
 
     point: Tuple[float, float, float]
-    op: Literal["trail_push"] = "trail_push"
 
 
 @dataclass(frozen=True, slots=True)
 class RemoveTrail(_TrailCmd):
     """Delete the trail and all of its segments."""
-
-    op: Literal["trail_remove"] = "trail_remove"
 
 
 @dataclass(frozen=True, slots=True)
