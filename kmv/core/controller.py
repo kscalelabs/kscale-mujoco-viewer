@@ -200,7 +200,7 @@ class RenderLoop:
         trail_id: str | int,
         pt: np.ndarray,
         trail_state: _TrailState,
-        *,  # keyword-only flags
+        *,
         check_distance: bool = True,
     ) -> None:
         """Add *pt* to trail *trail_id*, optionally enforcing `min_segment_dist`."""
