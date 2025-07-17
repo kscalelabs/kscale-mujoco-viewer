@@ -57,7 +57,7 @@ def run_default_humanoid() -> None:
     )
 
     # How to add a trail where you can manually push points
-    # Note how im not passing the track_body_id argument
+    # Note how we're not passing the track_body_id argument
     # We will manually push points to this trail in the simulation loop
     left_hand_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hand_left")
     viewer.add_trail("left_hand_path_manual", max_len=100, radius=0.01, min_segment_dist=0.01, rgba=(1, 0, 1, 1))

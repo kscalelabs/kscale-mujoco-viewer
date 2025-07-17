@@ -162,12 +162,12 @@ class _TrailCmd(Msg):
 class AddTrail(_TrailCmd):
     """Create a brand-new trail with drawing parameters."""
 
-    max_len: int | None = 150  # None → unlimited length
+    max_len: int | None = 150
     radius: float = 0.01
-    rgba: RGBA = (0.1, 0.6, 1.0, 0.9)  # default light-blue
-    track_body_id: int | None = None  # if set, emit point every frame from body
-    track_geom_id: int | None = None  # if set, emit point every frame from geom
-    min_segment_dist: float = 1e-3  # don't add a segment unless ≥ this distance
+    rgba: RGBA = (0.1, 0.6, 1.0, 0.9)
+    track_body_id: int | None = None
+    track_geom_id: int | None = None
+    min_segment_dist: float = 1e-3
 
 
 @dataclass(frozen=True, slots=True)
