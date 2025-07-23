@@ -4,7 +4,7 @@ from collections import deque
 from typing import Mapping
 
 import pyqtgraph as pg
-from PySide6.QtWidgets import QVBoxLayout, QWidget, QSizePolicy
+from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
 
 
 class ScalarPlot(QWidget):
@@ -21,10 +21,9 @@ class ScalarPlot(QWidget):
         self._history = history
         self._max_curves = max_curves
 
-        # --- graphics layout: [ plot | legend ] --------------------------
         layout = QVBoxLayout(self)
 
-        self._glw  = pg.GraphicsLayoutWidget()
+        self._glw = pg.GraphicsLayoutWidget()
         layout.addWidget(self._glw)
 
         self._plot = self._glw.addPlot(row=0, col=0)
@@ -35,22 +34,19 @@ class ScalarPlot(QWidget):
             colCount=1,
             pen=None,
             brush=pg.mkBrush(0, 0, 0, 150),
-            verSpacing=0,                   # keep rows tight
+            verSpacing=0,
             horSpacing=0,
         )
         self._glw.addItem(self._legend, row=0, col=1)
 
-        # --- NEW: stop vertical stretching ---------------------------------
         self._legend.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        self._legend.updateSize()                           # recompute bbox
+        self._legend.updateSize()
         h = self._legend.boundingRect().height()
-        self._legend.setMaximumHeight(h)                    # lock to content
-        # -------------------------------------------------------------------
+        self._legend.setMaximumHeight(h)
 
-        # make the data column elastic and the legend column "shrink-to-fit"
-        grid = self._glw.ci.layout                    # QGraphicsGridLayout
-        grid.setColumnStretchFactor(0, 1)             # plot stretches
-        grid.setColumnStretchFactor(1, 0)             # legend = minimum size
+        grid = self._glw.ci.layout
+        grid.setColumnStretchFactor(0, 1)
+        grid.setColumnStretchFactor(1, 0)
 
         self._curves: dict[str, pg.PlotDataItem] = {}
         self._buffers: dict[str, deque[tuple[float, float]]] = {}
@@ -90,7 +86,7 @@ class ScalarPlot(QWidget):
                 color = self._next_color()
                 curve = self._plot.plot(pen=pg.mkPen(color=color, width=2), name=name)
                 self._curves[name] = curve
-                self._legend.addItem(curve, name)      # manual, now that legend is external
+                self._legend.addItem(curve, name)
 
             self._buffers[name].append((t, value))
 
