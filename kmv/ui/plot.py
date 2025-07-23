@@ -33,9 +33,10 @@ class ScalarPlot(QWidget):
 
         self._legend = pg.LegendItem(
             colCount=1,
-            pen=pg.mkPen('#AAAAAA'),
+            pen=None,
             brush=pg.mkBrush(0, 0, 0, 150),
             verSpacing=0,                   # keep rows tight
+            horSpacing=0,
         )
         self._glw.addItem(self._legend, row=0, col=1)
 
