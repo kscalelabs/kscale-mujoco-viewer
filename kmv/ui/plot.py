@@ -4,7 +4,7 @@ from collections import deque
 from typing import Mapping
 
 import pyqtgraph as pg
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget, QSizePolicy
 
 
 class ScalarPlot(QWidget):
@@ -35,8 +35,16 @@ class ScalarPlot(QWidget):
             colCount=1,
             pen=pg.mkPen('#AAAAAA'),
             brush=pg.mkBrush(0, 0, 0, 150),
+            verSpacing=0,                   # keep rows tight
         )
-        self._glw.addItem(self._legend, row=0, col=1)   # <-- directly in col 1
+        self._glw.addItem(self._legend, row=0, col=1)
+
+        # --- NEW: stop vertical stretching ---------------------------------
+        self._legend.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self._legend.updateSize()                           # recompute bbox
+        h = self._legend.boundingRect().height()
+        self._legend.setMaximumHeight(h)                    # lock to content
+        # -------------------------------------------------------------------
 
         # make the data column elastic and the legend column "shrink-to-fit"
         grid = self._glw.ci.layout                    # QGraphicsGridLayout
