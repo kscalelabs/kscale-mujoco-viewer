@@ -21,27 +21,27 @@ class ScalarPlot(QWidget):
         self._history = history
         self._max_curves = max_curves
 
-        # --- graphics layout: [plot | legend] ---------------------------------
+        # --- graphics layout: [ plot | legend ] --------------------------
         layout = QVBoxLayout(self)
 
-        self._glw  = pg.GraphicsLayoutWidget()        # 1-row, 2-column grid
+        self._glw  = pg.GraphicsLayoutWidget()
         layout.addWidget(self._glw)
 
         self._plot = self._glw.addPlot(row=0, col=0)
         self._plot.setClipToView(True)
         self._plot.showGrid(x=True, y=True)
 
-        legend_vb = self._glw.addViewBox(row=0, col=1)  # dedicated column
-        legend_vb.setMaximumWidth(270)                  # reserve ~140 px
-        legend_vb.setMouseEnabled(False, False)
-
         self._legend = pg.LegendItem(
-            colCount=1,                                # one long column
+            colCount=1,
             pen=pg.mkPen('#AAAAAA'),
-            brush=pg.mkBrush(0, 0, 0, 150)             # translucent black card
+            brush=pg.mkBrush(0, 0, 0, 150),
         )
-        self._legend.setParentItem(legend_vb)
-        self._legend.anchor((0, 0), (0, 0))            # pin TL→TL
+        self._glw.addItem(self._legend, row=0, col=1)   # <-- directly in col 1
+
+        # make the data column elastic and the legend column "shrink-to-fit"
+        grid = self._glw.ci.layout                    # QGraphicsGridLayout
+        grid.setColumnStretchFactor(0, 1)             # plot stretches
+        grid.setColumnStretchFactor(1, 0)             # legend = minimum size
 
         self._curves: dict[str, pg.PlotDataItem] = {}
         self._buffers: dict[str, deque[tuple[float, float]]] = {}
