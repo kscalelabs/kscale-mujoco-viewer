@@ -4,7 +4,9 @@ from collections import deque
 from typing import Mapping
 
 import pyqtgraph as pg
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
+
+POL = QSizePolicy.Policy
 
 
 class ScalarPlot(QWidget):
@@ -18,19 +20,42 @@ class ScalarPlot(QWidget):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+
         self._history = history
         self._max_curves = max_curves
 
+        # Make layout widget
         layout = QVBoxLayout(self)
-        self._plot = pg.PlotWidget()
+        self._glw = pg.GraphicsLayoutWidget()
+        layout.addWidget(self._glw)
+
+        # Add plot
+        self._plot = self._glw.addPlot(row=0, col=0)
         self._plot.setClipToView(True)
         self._plot.showGrid(x=True, y=True)
-        self._plot.addLegend(offset=(10, 10))
-        layout.addWidget(self._plot)
 
+        # Add legend
+        self._legend = pg.LegendItem(
+            colCount=1,
+            pen=None,
+            brush=pg.mkBrush(0, 0, 0, 150),
+            verSpacing=0,
+            horSpacing=0,
+        )
+        self._glw.addItem(self._legend, row=0, col=1)
+
+        # Adjust how legend is displayed
+        self._legend.setSizePolicy(POL.Preferred, POL.Fixed)
+        self._legend.updateSize()
+        h = self._legend.boundingRect().height()
+        self._legend.setMaximumHeight(h)
+        grid = self._glw.ci.layout
+        grid.setColumnStretchFactor(0, 1)
+        grid.setColumnStretchFactor(1, 0)
+
+        # Initialize buffers and curves
         self._curves: dict[str, pg.PlotDataItem] = {}
         self._buffers: dict[str, deque[tuple[float, float]]] = {}
-
         self._palette = [
             "#FF6B6B",
             "#4ECDC4",
@@ -62,9 +87,15 @@ class ScalarPlot(QWidget):
             if name not in self._buffers:
                 if len(self._curves) >= self._max_curves:
                     continue  # silently ignore extra streams
+
+                # Add new curve to plot
                 self._buffers[name] = deque(maxlen=self._history)
                 color = self._next_color()
-                self._curves[name] = self._plot.plot(pen=pg.mkPen(color=color, width=2), name=name)
+                curve = self._plot.plot(pen=pg.mkPen(color=color, width=2), name=name)
+                self._curves[name] = curve
+
+                # Add new curve to legend
+                self._legend.addItem(curve, name)
 
             self._buffers[name].append((t, value))
 
