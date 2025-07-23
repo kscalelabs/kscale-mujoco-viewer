@@ -6,6 +6,8 @@ from typing import Mapping
 import pyqtgraph as pg
 from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
 
+POL = QSizePolicy.Policy
+
 
 class ScalarPlot(QWidget):
     """Light-weight scrolling plot for a handful of scalar streams."""
@@ -43,7 +45,7 @@ class ScalarPlot(QWidget):
         self._glw.addItem(self._legend, row=0, col=1)
 
         # Adjust how legend is displayed
-        self._legend.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self._legend.setSizePolicy(POL.Preferred, POL.Fixed)
         self._legend.updateSize()
         h = self._legend.boundingRect().height()
         self._legend.setMaximumHeight(h)
