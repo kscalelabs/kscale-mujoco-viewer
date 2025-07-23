@@ -21,12 +21,27 @@ class ScalarPlot(QWidget):
         self._history = history
         self._max_curves = max_curves
 
+        # --- graphics layout: [plot | legend] ---------------------------------
         layout = QVBoxLayout(self)
-        self._plot = pg.PlotWidget()
+
+        self._glw  = pg.GraphicsLayoutWidget()        # 1-row, 2-column grid
+        layout.addWidget(self._glw)
+
+        self._plot = self._glw.addPlot(row=0, col=0)
         self._plot.setClipToView(True)
         self._plot.showGrid(x=True, y=True)
-        self._plot.addLegend(offset=(10, 10))
-        layout.addWidget(self._plot)
+
+        legend_vb = self._glw.addViewBox(row=0, col=1)  # dedicated column
+        legend_vb.setMaximumWidth(270)                  # reserve ~140 px
+        legend_vb.setMouseEnabled(False, False)
+
+        self._legend = pg.LegendItem(
+            colCount=1,                                # one long column
+            pen=pg.mkPen('#AAAAAA'),
+            brush=pg.mkBrush(0, 0, 0, 150)             # translucent black card
+        )
+        self._legend.setParentItem(legend_vb)
+        self._legend.anchor((0, 0), (0, 0))            # pin TL→TL
 
         self._curves: dict[str, pg.PlotDataItem] = {}
         self._buffers: dict[str, deque[tuple[float, float]]] = {}
@@ -64,7 +79,9 @@ class ScalarPlot(QWidget):
                     continue  # silently ignore extra streams
                 self._buffers[name] = deque(maxlen=self._history)
                 color = self._next_color()
-                self._curves[name] = self._plot.plot(pen=pg.mkPen(color=color, width=2), name=name)
+                curve = self._plot.plot(pen=pg.mkPen(color=color, width=2), name=name)
+                self._curves[name] = curve
+                self._legend.addItem(curve, name)      # manual, now that legend is external
 
             self._buffers[name].append((t, value))
 
