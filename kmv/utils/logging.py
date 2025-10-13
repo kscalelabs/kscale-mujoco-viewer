@@ -1,5 +1,6 @@
 """Logging utilities."""
 
+import json
 import logging
 from pathlib import Path
 
@@ -106,24 +107,16 @@ def save_video(frames: list[np.ndarray], save_path: str | Path, fps: int = 30) -
 
 
 def save_logs(logs: list[dict[str, np.ndarray]], save_path: str | Path) -> None:
-    """Save stacked arrays from logs to CSV files.
+    """Save logs as newline-delimited JSON.
 
     Args:
         logs: List of dictionaries containing arrays to save
-        save_path: Directory to save the CSV files
+        save_path: Path to save the NDJSON file
     """
-    (path := Path(save_path)).mkdir(parents=True, exist_ok=True)
+    (path := Path(save_path) / "kinfer_log.ndjson").parent.mkdir(parents=True, exist_ok=True)
 
-    all_keys: set[str] = set()
-    for log in logs:
-        all_keys.update(log.keys())
-
-    for key in all_keys:
-        arrays = []
+    with open(path, "w") as f:
         for log in logs:
-            if key in log:
-                arrays.append(log[key])
-
-        if arrays:
-            stacked = np.stack(arrays)
-            np.savetxt(path / f"{key}.tsv", stacked, delimiter="\t")
+            json_log = {k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in log.items()}
+            json.dump(json_log, f)
+            f.write("\n")
